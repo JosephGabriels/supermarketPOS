@@ -1,0 +1,444 @@
+# Supermarket POS System
+
+A comprehensive Point of Sale (POS) system designed for Kenyan supermarkets, built with Django REST Framework backend and React frontend.
+
+## Features
+
+### Core Functionality
+- **Sales Processing**: 
+  - Real-time checkout with cart management
+  - Multiple payment methods per transaction (split payments)
+  - Barcode scanning with automatic product lookup
+  - Manager approval workflow for items not in system
+  - Comprehensive discount system (per-item, transaction-wide, coupons, manager overrides)
+  
+- **Inventory Management**: 
+  - Automatic stock deduction on sales
+  - Manual stock-taking and adjustments
+  - Low stock alerts and reporting
+  - Product management with categories
+  - Stock movement tracking and audit trails
+  
+- **Customer Management**: 
+  - Customer profiles with purchase history
+  - Full loyalty program (points accumulation, tier-based rewards, birthday offers)
+  - Customer tiers: Bronze, Silver, Gold
+  - Loyalty point redemption
+  
+- **Returns & Refunds**: 
+  - Manager approval required for all returns
+  - Credit note issuance
+  - Refund tracking and reporting
+  
+- **Shift Management**:
+  - Opening/closing shift workflows
+  - Cash drawer counting and reconciliation
+  - Cashier accountability tracking
+  - Shift handover reports
+  
+- **Reporting**: 
+  - Daily sales summaries
+  - Cashier performance metrics
+  - Stock level reports with low stock alerts
+  - Tax reports for KRA compliance
+  - Financial analytics and trends
+  
+- **User Roles & Permissions**: 
+  - **Cashier**: Process sales, handle payments, basic returns (with approval)
+  - **Manager**: Approve returns, manage discounts, view reports, handle exceptions
+  - **Administrator**: Full system access, user management, system configuration
+  
+- **Multi-Branch Support**:
+  - Independent branch operations
+  - Branch-specific inventory and reporting
+  - Centralized user management
+
+### Kenyan-Specific Features
+- **Tax Calculations**: Automatic 16% VAT calculation with detailed breakdown
+- **Currency**: Kenyan Shillings (KES) support
+- **Payment Methods**: 
+  - Cash
+  - Credit/Debit cards
+  - M-Pesa (Real-time STK Push API + Manual confirmation)
+  - Airtel Money
+  - Split payments across multiple methods
+- **KRA Compliance**: 
+  - Tax reports and VAT tracking
+  - Ready for ETMS integration (Phase 2)
+  - Digital receipt generation with QR codes
+
+### Hardware Integration
+- **Barcode Scanners**: 
+  - USB barcode scanners (keyboard emulation)
+  - Bluetooth wireless scanners
+  - Multiple scanner type support
+  
+- **Receipt Printers**: 
+  - Thermal printer support
+  - Receipt includes: Business details, itemized list, tax breakdown, totals, QR code, loyalty points
+  
+- **Cash Drawer**: Integration with shift management
+
+### Offline Mode (Critical)
+- **Local-First Architecture**: System continues operating without internet
+- **Data Synchronization**: Automatic sync when connection restored
+- **Conflict Resolution**: Smart handling of offline transaction conflicts
+
+## Tech Stack
+
+### Backend
+- **Framework**: Django 4.2
+- **API**: Django REST Framework
+- **Authentication**: JWT (JSON Web Tokens)
+- **Database**: PostgreSQL (production) / SQLite (development)
+- **Language**: Python 3.9+
+
+### Frontend
+- **Framework**: React 19
+- **Build Tool**: Vite
+- **Styling**: Tailwind CSS
+- **State Management**: React Context
+- **Language**: TypeScript
+
+## Installation
+
+### Prerequisites
+- Python 3.9+
+- Node.js 18+
+- PostgreSQL (for production, optional for development)
+
+### Environment Configuration
+
+Create a `.env` file in the `backend/` directory:
+
+```bash
+# Debug mode (set to False in production)
+DEBUG=True
+SECRET_KEY=your-secret-key-here
+
+# Allowed hosts
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+# Database Configuration
+# For PostgreSQL (Production):
+DB_ENGINE=django.db.backends.postgresql
+DB_NAME=pos_system
+DB_USER=postgres
+DB_PASSWORD=your-db-password
+DB_HOST=localhost
+DB_PORT=5432
+
+# For SQLite (Development):
+# DB_ENGINE=django.db.backends.sqlite3
+# DB_NAME=db.sqlite3
+
+# CORS Settings
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174
+```
+
+**Security Notes:**
+- Never commit `.env` file to version control
+- Use strong SECRET_KEY in production
+- Change default admin password immediately
+- Enable HTTPS in production (configured automatically when DEBUG=False)
+
+### Backend Setup
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+# Create database (if using PostgreSQL)
+# psql -U postgres -c "CREATE DATABASE pos_system;"
+
+python manage.py migrate
+python manage.py createsuperuser  # Or use default: joesky/Tavor@!07
+python manage.py runserver
+```
+
+### Frontend Setup
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+## Usage
+
+1. **Start Backend**: Run `python manage.py runserver` in backend directory
+2. **Start Frontend**: Run `npm run dev` in frontend directory
+3. **Access Application**: Open http://localhost:5174
+4. **Admin Panel**: Access http://localhost:8000/admin for data management
+
+### Default Credentials
+- **Admin User**: `joesky` / `Tavor@!07`
+- **Branch**: Main Branch (Nairobi)
+
+## Authentication & Authorization
+
+### JWT Authentication
+The system uses JSON Web Tokens (JWT) for secure authentication:
+
+- **Access Token Lifetime**: 8 hours
+- **Refresh Token Lifetime**: 7 days
+- **Token Rotation**: Enabled (new refresh token on each refresh)
+- **Blacklist**: Old tokens are blacklisted after rotation
+
+### Authentication Flow
+
+1. **Login**: POST credentials to `/api/auth/token/`
+   ```json
+   {
+     "username": "joesky",
+     "password": "Tavor@!07"
+   }
+   ```
+   Response:
+   ```json
+   {
+     "access": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+     "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc..."
+   }
+   ```
+
+2. **Authenticated Requests**: Include access token in header
+   ```
+   Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGc...
+   ```
+
+3. **Refresh Token**: When access token expires, use refresh token
+   ```json
+   POST /api/auth/token/refresh/
+   {
+     "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc..."
+   }
+   ```
+
+### User Roles & Permissions
+
+#### Administrator
+- Full system access
+- User management (create, edit, delete users)
+- System configuration
+- Branch management
+- View all reports across branches
+- Override any operation
+
+#### Manager
+- Approve/reject returns and refunds
+- Approve discount overrides
+- Approve ad-hoc items (products not in system)
+- View branch-specific reports
+- Manage inventory adjustments
+- Override prices (with logging)
+- Void sales
+- Close cashier shifts
+
+#### Cashier
+- Process sales transactions
+- Accept payments (cash, M-Pesa, cards)
+- Scan barcodes and add products to cart
+- Apply standard discounts
+- Request manager approval for exceptions
+- Open/close own shift
+- View own shift reports
+- Basic customer management
+
+### Accountability & Audit Trails
+
+**Every action is tracked with:**
+- **Who**: User who performed the action (created_by, updated_by)
+- **What**: Type of action (create, update, delete)
+- **When**: Timestamp (created_at, updated_at)
+- **Where**: Branch location
+
+**Audited entities include:**
+- All sales transactions
+- Inventory movements
+- User actions
+- Approval requests/responses
+- Cash drawer operations
+- Returns and refunds
+- Discount applications
+- Price overrides
+
+**Audit logs are:**
+- Immutable (cannot be edited once created)
+- Searchable by date, user, action type
+- Exportable for compliance reporting
+- Retained for tax compliance (7 years minimum)
+
+### API Endpoints
+
+#### Authentication
+- `POST /api/auth/token/` - Obtain JWT token
+- `POST /api/auth/token/refresh/` - Refresh JWT token
+- `POST /api/auth/logout/` - Logout and invalidate token
+- `GET /api/auth/user/` - Get current user profile
+
+#### Products
+- `GET /api/products/` - List all products
+- `POST /api/products/` - Create product
+- `GET /api/products/{id}/` - Get product details
+- `GET /api/products/search/?barcode={code}` - Search by barcode
+- `GET /api/products/search/?name={name}` - Search by name
+- `PUT /api/products/{id}/` - Update product
+- `DELETE /api/products/{id}/` - Delete product
+- `GET /api/categories/` - List product categories
+
+#### Sales
+- `GET /api/sales/` - List sales (with filters)
+- `POST /api/sales/create_sale/` - Create new sale with split payments
+- `GET /api/sales/{id}/` - Get sale details
+- `POST /api/sales/{id}/return/` - Process return (requires manager approval)
+- `GET /api/sales/daily-summary/` - Get daily sales summary
+
+#### Customers
+- `GET /api/customers/` - List customers
+- `POST /api/customers/` - Create customer
+- `GET /api/customers/{id}/` - Get customer details
+- `GET /api/customers/{id}/purchase-history/` - Get purchase history
+- `GET /api/customers/{id}/loyalty/` - Get loyalty points and tier
+- `POST /api/customers/{id}/loyalty/redeem/` - Redeem loyalty points
+
+#### Inventory
+- `GET /api/stock-movements/` - List stock movements
+- `POST /api/stock-movements/` - Record stock movement
+- `GET /api/inventory/low-stock/` - Get low stock alerts
+- `POST /api/inventory/adjustment/` - Manual stock adjustment
+
+#### Shifts
+- `POST /api/shifts/open/` - Open new shift
+- `POST /api/shifts/close/` - Close current shift
+- `GET /api/shifts/current/` - Get current active shift
+- `GET /api/shifts/{id}/` - Get shift details
+- `POST /api/shifts/{id}/reconcile/` - Reconcile cash drawer
+
+#### Payments
+- `POST /api/payments/mpesa/initiate/` - Initiate M-Pesa STK Push
+- `POST /api/payments/mpesa/verify/` - Verify M-Pesa payment
+- `POST /api/payments/manual/` - Record manual payment confirmation
+
+#### Reports
+- `GET /api/reports/sales/` - Sales reports (with date filters)
+- `GET /api/reports/cashier-performance/` - Cashier performance
+- `GET /api/reports/stock/` - Stock level reports
+- `GET /api/reports/tax/` - Tax reports for KRA
+- `GET /api/reports/branch/` - Branch-specific reports
+
+#### Approvals
+- `POST /api/approvals/request/` - Request manager approval
+- `GET /api/approvals/pending/` - List pending approvals
+- `POST /api/approvals/{id}/approve/` - Approve request
+- `POST /api/approvals/{id}/reject/` - Reject request
+
+#### Sync (Offline Support)
+- `POST /api/sync/push/` - Push offline transactions
+- `GET /api/sync/pull/` - Pull server updates
+- `GET /api/sync/status/` - Get sync status
+
+## Database Schema
+
+### Key Models
+
+#### Products & Inventory
+- **Category**: Product category (name, description)
+- **Product**: Name, barcode, price, cost_price, stock_quantity, category, reorder_level, branch
+- **StockMovement**: Product, quantity, movement_type (sale/adjustment/return), reason, user, timestamp
+
+#### Sales & Transactions
+- **Sale**: Sale_number, branch, cashier, customer, subtotal, tax_amount, discount_amount, total_amount, status, shift, created_at
+- **SaleItem**: Sale, product, quantity, unit_price, discount, subtotal
+- **Payment**: Sale, payment_method (cash/mpesa/card), amount, reference_number, status, timestamp
+- **Discount**: Code, type (percentage/fixed), value, applicable_items, start_date, end_date, requires_approval
+- **Return**: Original_sale, items_returned, refund_amount, reason, manager_approval, customer, created_at
+
+#### Customers & Loyalty
+- **Customer**: Name, phone, email, tier (bronze/silver/gold), total_points, lifetime_purchases, birthday, created_at
+- **LoyaltyTransaction**: Customer, points, transaction_type (earn/redeem), sale, description, timestamp
+- **LoyaltyTier**: Name, min_purchase_amount, points_multiplier, discount_percentage
+
+#### User Management
+- **User**: Username, email, role (cashier/manager/admin), branch, is_active, created_at (extends Django User)
+- **Branch**: Name, location, phone, tax_id, is_active
+
+#### Shift Management
+- **Shift**: Cashier, branch, opening_time, closing_time, opening_cash, closing_cash, expected_cash, cash_difference, status (open/closed)
+- **ShiftTransaction**: Shift, sale, amount, payment_method
+
+#### Approvals
+- **ApprovalRequest**: Request_type (return/discount/ad_hoc_item), requester, manager, status (pending/approved/rejected), details (JSON), created_at, resolved_at
+
+#### System & Sync
+- **SyncLog**: Entity_type, entity_id, action (create/update/delete), data (JSON), synced, created_at
+- **SystemConfig**: Key, value, description (for system-wide settings)
+
+## Testing
+
+### Backend Tests
+```bash
+cd backend
+python manage.py test
+```
+
+### Frontend Tests
+```bash
+cd frontend
+npx playwright test
+```
+
+## Deployment
+
+### Backend
+1. Set `DEBUG = False` in settings.py
+2. Configure PostgreSQL database
+3. Set up static files serving
+4. Use Gunicorn for production server
+
+### Frontend
+```bash
+npm run build
+# Serve dist/ folder with nginx or similar
+```
+
+## Development Phases
+
+### Phase 1: Core POS (Current)
+- ✅ **Backend Models & Database**: All models with audit trails implemented
+- ✅ **Authentication & Authorization**: JWT with role-based permissions
+- ✅ **Admin Interface**: Full Django admin for all models
+- 🔄 **REST API Endpoints**: In progress
+- 🔄 **Frontend Integration**: Pending
+- 🔄 **Hardware Integration**: Pending (barcode, printer)
+- 🔄 **Offline Mode**: Pending
+- 🔄 **Testing & Deployment**: Pending
+
+### Phase 2: KRA Integration (Next)
+- **ETMS Integration**: Electronic Tax Invoice Management System
+- **Digital Signatures**: ETR-compliant receipts
+- **Automatic Tax Submissions**: Direct KRA reporting
+- **Compliance Dashboard**: Tax audit trails
+
+### Future Enhancements
+- **Mobile App**: React Native companion for inventory checks
+- **Advanced Analytics**: Predictive stock forecasting, AI-powered insights
+- **Supplier Integration**: Purchase orders, automated reordering
+- **E-commerce Integration**: Online store sync
+- **Multi-currency Support**: For border locations
+- **Biometric Authentication**: Fingerprint login for cashiers
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make changes and add tests
+4. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Support
+
+For support or questions, please open an issue on GitHub.
