@@ -27,8 +27,8 @@ class ProductViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = Product.objects.filter(is_active=True)
-        
-        if self.request.user.role != 'admin':
+
+        if self.request.user.role != 'admin' and self.request.user.branch:
             queryset = queryset.filter(branch=self.request.user.branch)
         
         barcode = self.request.query_params.get('barcode', None)

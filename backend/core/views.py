@@ -280,10 +280,14 @@ class CategoryViewSet(viewsets.ModelViewSet):
 class SystemConfigViewSet(viewsets.ModelViewSet):
     queryset = SystemConfig.objects.all()
     serializer_class = SystemConfigSerializer
-    permission_classes = [IsAuthenticated, IsAdmin]
-    
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), IsAdmin()]
+
     def perform_create(self, serializer):
         serializer.save(updated_by=self.request.user)
-    
+
     def perform_update(self, serializer):
         serializer.save(updated_by=self.request.user)

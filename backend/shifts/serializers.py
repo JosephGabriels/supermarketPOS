@@ -13,7 +13,7 @@ class ShiftTransactionSerializer(serializers.ModelSerializer):
 
 class ShiftSerializer(serializers.ModelSerializer):
     cashier_name = serializers.SerializerMethodField()
-    branch_name = serializers.CharField(source='branch.name', read_only=True)
+    branch_name = serializers.SerializerMethodField()
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     closed_by_name = serializers.SerializerMethodField()
     
@@ -28,14 +28,17 @@ class ShiftSerializer(serializers.ModelSerializer):
     
     def get_cashier_name(self, obj):
         return obj.cashier.get_full_name() or obj.cashier.username
-    
+
+    def get_branch_name(self, obj):
+        return obj.branch.name if obj.branch else None
+
     def get_closed_by_name(self, obj):
         return obj.closed_by.get_full_name() if obj.closed_by else None
 
 
 class ShiftDetailSerializer(serializers.ModelSerializer):
     cashier_name = serializers.SerializerMethodField()
-    branch_name = serializers.CharField(source='branch.name', read_only=True)
+    branch_name = serializers.SerializerMethodField()
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     closed_by_name = serializers.SerializerMethodField()
     transactions = ShiftTransactionSerializer(many=True, read_only=True)
@@ -53,10 +56,13 @@ class ShiftDetailSerializer(serializers.ModelSerializer):
     
     def get_cashier_name(self, obj):
         return obj.cashier.get_full_name() or obj.cashier.username
-    
+
+    def get_branch_name(self, obj):
+        return obj.branch.name if obj.branch else None
+
     def get_closed_by_name(self, obj):
         return obj.closed_by.get_full_name() if obj.closed_by else None
-    
+
     def get_sales_summary(self, obj):
         from sales.models import Sale
         from django.db.models import Count, Sum

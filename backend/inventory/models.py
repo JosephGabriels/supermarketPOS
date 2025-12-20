@@ -20,7 +20,7 @@ class Product(AuditMixin):
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='products')
     
     is_active = models.BooleanField(default=True)
-    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('16.00'), help_text="VAT percentage")
+    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'), help_text="VAT percentage")
     supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, related_name='products')
     
     image = models.ImageField(upload_to='products/', blank=True, null=True)
@@ -65,7 +65,7 @@ class StockMovement(AuditMixin):
     reason = models.TextField(blank=True)
     reference_id = models.CharField(max_length=100, blank=True, help_text="Sale ID, Purchase Order, etc.")
     
-    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='stock_movements')
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='stock_movements', null=True, blank=True)
     
     class Meta:
         ordering = ['-created_at']

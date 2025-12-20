@@ -11,7 +11,7 @@ class Shift(AuditMixin):
     ]
     
     cashier = models.ForeignKey(User, on_delete=models.PROTECT, related_name='shifts')
-    branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name='shifts')
+    branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name='shifts', null=True, blank=True)
     
     opening_time = models.DateTimeField(auto_now_add=True)
     closing_time = models.DateTimeField(null=True, blank=True)

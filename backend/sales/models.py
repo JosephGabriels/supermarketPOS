@@ -59,7 +59,7 @@ class Sale(AuditMixin):
     
     sale_number = models.CharField(max_length=50, unique=True, db_index=True)
     
-    branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name='sales')
+    branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name='sales', null=True, blank=True)
     cashier = models.ForeignKey(User, on_delete=models.PROTECT, related_name='sales_as_cashier')
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name='sales')
     
@@ -100,7 +100,7 @@ class SaleItem(models.Model):
     discount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     subtotal = models.DecimalField(max_digits=15, decimal_places=2, validators=[MinValueValidator(Decimal('0.00'))])
     
-    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('16.00'))
+    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))
     tax_amount = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
     
     is_ad_hoc = models.BooleanField(default=False, help_text="Item added without product barcode")

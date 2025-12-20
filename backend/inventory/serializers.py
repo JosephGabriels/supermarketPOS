@@ -59,7 +59,6 @@ class StockMovementSerializer(serializers.ModelSerializer):
 
 
 class StockAdjustmentSerializer(serializers.Serializer):
-    product_id = serializers.IntegerField()
     quantity = serializers.IntegerField()
     reason = serializers.CharField(max_length=500)
     movement_type = serializers.ChoiceField(choices=['adjustment', 'damage', 'purchase', 'return'])

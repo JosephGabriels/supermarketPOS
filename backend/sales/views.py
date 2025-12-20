@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from django.utils import timezone
+from django.core.exceptions import ValidationError
 from decimal import Decimal
 from .models import Sale, SaleItem, Discount, Return
 from inventory.models import Product, StockMovement
@@ -21,8 +22,8 @@ class SaleViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = Sale.objects.all()
-        
-        if self.request.user.role != 'admin':
+
+        if self.request.user.role != 'admin' and self.request.user.branch:
             queryset = queryset.filter(branch=self.request.user.branch)
         
         status_filter = self.request.query_params.get('status', None)
@@ -48,15 +49,18 @@ class SaleViewSet(viewsets.ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         data = serializer.validated_data
-        
-        current_shift = Shift.objects.filter(
-            cashier=request.user,
-            status='open'
-        ).first()
-        
-        if not current_shift:
-            return Response({'error': 'No open shift found. Please open a shift first.'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
+
+        # Temporarily disabled shift requirement due to frontend issues
+        # current_shift = Shift.objects.filter(
+        #     cashier=request.user,
+        #     status='open'
+        # ).first()
+        #
+        # if not current_shift:
+        #     return Response({'error': 'No open shift found. Please open a shift first.'},
+        #                   status=status.HTTP_400_BAD_REQUEST)
+
+        current_shift = None
         
         customer = None
         if data.get('customer_id'):
@@ -112,7 +116,7 @@ class SaleViewSet(viewsets.ModelViewSet):
             quantity = item_data['quantity']
             discount = item_data.get('discount', Decimal('0.00'))
             
-            tax_rate = product.tax_rate if product else Decimal('16.00')
+            tax_rate = Decimal('0.00')  # Prices are tax-inclusive
             item_subtotal = (unit_price * quantity) - discount
             item_tax = item_subtotal * (tax_rate / 100)
             
@@ -147,9 +151,10 @@ class SaleViewSet(viewsets.ModelViewSet):
             except Discount.DoesNotExist:
                 pass
         
+        points_discount = data.get('points_discount', Decimal('0.00'))
         sale.subtotal = subtotal
         sale.tax_amount = tax_amount
-        sale.total_amount = subtotal + tax_amount - sale.discount_amount
+        sale.total_amount = subtotal - sale.discount_amount - points_discount  # Prices are tax-inclusive
         sale.save()
         
         response_serializer = SaleSerializer(sale)
@@ -159,18 +164,22 @@ class SaleViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
         sale = self.get_object()
-        
-        if sale.status != 'pending':
-            return Response({'error': 'Sale is already completed or cancelled'}, 
+
+        if sale.status == 'completed':
+            return Response({'message': 'Sale already completed'}, status=status.HTTP_200_OK)
+        elif sale.status in ['cancelled', 'refunded']:
+            return Response({'error': 'Sale is already cancelled or refunded'},
                           status=status.HTTP_400_BAD_REQUEST)
         
         for item in sale.items.all():
             if not item.is_ad_hoc and item.product:
-                product = item.product
+                product = Product.objects.select_for_update().get(id=item.product.id)
+                if product.stock_quantity < item.quantity:
+                    raise ValidationError(f'Insufficient stock for {product.name}. Available: {product.stock_quantity}, Required: {item.quantity}')
                 previous_quantity = product.stock_quantity
                 product.stock_quantity -= item.quantity
                 product.save()
-                
+
                 StockMovement.objects.create(
                     product=product,
                     movement_type='sale',
@@ -179,7 +188,7 @@ class SaleViewSet(viewsets.ModelViewSet):
                     new_quantity=product.stock_quantity,
                     reason=f'Sale {sale.sale_number}',
                     reference_id=sale.sale_number,
-                    branch=sale.branch,
+                    branch=sale.branch or product.branch,
                     created_by=request.user
                 )
         

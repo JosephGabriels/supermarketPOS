@@ -26,7 +26,7 @@ class ShiftViewSet(viewsets.ModelViewSet):
         
         if self.request.user.role == 'cashier':
             queryset = queryset.filter(cashier=self.request.user)
-        elif self.request.user.role != 'admin':
+        elif self.request.user.role != 'admin' and self.request.user.branch:
             queryset = queryset.filter(branch=self.request.user.branch)
         
         status_filter = self.request.query_params.get('status', None)
@@ -52,17 +52,17 @@ class ShiftViewSet(viewsets.ModelViewSet):
             cashier=request.user,
             status='open'
         ).first()
-        
+
         if open_shift:
-            return Response({'error': 'You already have an open shift'}, 
+            return Response({'error': 'You already have an open shift'},
                           status=status.HTTP_400_BAD_REQUEST)
-        
+
         serializer = ShiftOpenSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
+
         data = serializer.validated_data
-        
+
         shift = Shift.objects.create(
             cashier=request.user,
             branch=request.user.branch,
@@ -71,7 +71,7 @@ class ShiftViewSet(viewsets.ModelViewSet):
             status='open',
             created_by=request.user
         )
-        
+
         response_serializer = ShiftSerializer(shift)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
     

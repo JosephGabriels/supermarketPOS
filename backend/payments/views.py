@@ -56,12 +56,13 @@ class PaymentViewSet(viewsets.ModelViewSet):
                           status=status.HTTP_400_BAD_REQUEST)
         
         total_payments = Payment.objects.filter(
-            sale=sale, 
+            sale=sale,
             status='completed'
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-        
-        if total_payments + data['amount'] > sale.total_amount:
-            return Response({'error': 'Payment amount exceeds sale total'}, 
+
+        # Allow overpayment for cash payments (change will be given)
+        if data['payment_method'] != 'cash' and total_payments + data['amount'] > sale.total_amount:
+            return Response({'error': 'Payment amount exceeds sale total'},
                           status=status.HTTP_400_BAD_REQUEST)
         
         payment = Payment.objects.create(

@@ -45,7 +45,7 @@ class SaleItemCreateSerializer(serializers.Serializer):
 class SaleSerializer(serializers.ModelSerializer):
     items = SaleItemSerializer(many=True, read_only=True)
     cashier_name = serializers.SerializerMethodField()
-    branch_name = serializers.CharField(source='branch.name', read_only=True)
+    branch_name = serializers.SerializerMethodField()
     customer_details = CustomerSerializer(source='customer', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     
@@ -60,12 +60,16 @@ class SaleSerializer(serializers.ModelSerializer):
     def get_cashier_name(self, obj):
         return obj.cashier.get_full_name() or obj.cashier.username
 
+    def get_branch_name(self, obj):
+        return obj.branch.name if obj.branch else None
+
 
 class SaleCreateSerializer(serializers.Serializer):
     customer_id = serializers.IntegerField(required=False, allow_null=True)
     items = SaleItemCreateSerializer(many=True)
     discount_code = serializers.CharField(max_length=50, required=False, allow_blank=True)
     discount_amount = serializers.DecimalField(max_digits=15, decimal_places=2, default=0)
+    points_discount = serializers.DecimalField(max_digits=15, decimal_places=2, default=0)
     notes = serializers.CharField(required=False, allow_blank=True)
     
     def validate_items(self, value):
