@@ -1,11 +1,13 @@
 from rest_framework import serializers
 from .models import Product, StockMovement
 from core.serializers import CategorySerializer, BranchSerializer
+from suppliers.serializers import SupplierSerializer
 
 
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     branch_name = serializers.CharField(source='branch.name', read_only=True)
+    supplier_name = serializers.CharField(source='supplier.name', read_only=True)
     is_low_stock = serializers.BooleanField(read_only=True)
     price_with_tax = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     
@@ -13,14 +15,15 @@ class ProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = ['id', 'name', 'barcode', 'category', 'category_name', 'description', 'price', 
                   'cost_price', 'stock_quantity', 'reorder_level', 'branch', 'branch_name', 
-                  'is_active', 'tax_rate', 'image', 'is_low_stock', 'price_with_tax',
-                  'created_at', 'updated_at']
+                  'supplier', 'supplier_name', 'is_active', 'tax_rate', 'image', 'is_low_stock', 
+                  'price_with_tax', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
 
 class ProductDetailSerializer(serializers.ModelSerializer):
     category_details = CategorySerializer(source='category', read_only=True)
     branch_details = BranchSerializer(source='branch', read_only=True)
+    supplier_details = SupplierSerializer(source='supplier', read_only=True)
     is_low_stock = serializers.BooleanField(read_only=True)
     price_with_tax = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     recent_movements = serializers.SerializerMethodField()
@@ -29,8 +32,9 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         model = Product
         fields = ['id', 'name', 'barcode', 'category', 'category_details', 'description', 
                   'price', 'cost_price', 'stock_quantity', 'reorder_level', 'branch', 
-                  'branch_details', 'is_active', 'tax_rate', 'image', 'is_low_stock', 
-                  'price_with_tax', 'recent_movements', 'created_at', 'updated_at']
+                  'branch_details', 'supplier', 'supplier_details', 'is_active', 'tax_rate', 
+                  'image', 'is_low_stock', 'price_with_tax', 'recent_movements', 
+                  'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
     
     def get_recent_movements(self, obj):

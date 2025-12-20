@@ -2,6 +2,7 @@ from django.db import models
 from django.core.validators import MinValueValidator
 from decimal import Decimal
 from core.models import AuditMixin, Branch, User, Category
+from suppliers.models import Supplier
 
 
 class Product(AuditMixin):
@@ -20,6 +21,7 @@ class Product(AuditMixin):
     
     is_active = models.BooleanField(default=True)
     tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('16.00'), help_text="VAT percentage")
+    supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, related_name='products')
     
     image = models.ImageField(upload_to='products/', blank=True, null=True)
     
