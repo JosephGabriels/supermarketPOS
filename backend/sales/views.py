@@ -20,6 +20,7 @@ try:
     from num2words import num2words
 except Exception:
     num2words = None
+from core.models import SystemConfig
 
 
 class SaleViewSet(viewsets.ModelViewSet):
@@ -212,10 +213,27 @@ class SaleViewSet(viewsets.ModelViewSet):
             name = escape(it.ad_hoc_name or (it.product.name if it.product else 'Item'))
             items_html += f"<div style='display:flex;justify-content:space-between'><span>{name} x{it.quantity}</span><span>{it.subtotal}</span></div>"
 
-        # include QR image if available
+        # include QR image if available (render slim using mm relative to receipt width)
         qr_img_html = ''
         if getattr(sale, 'etims_qr_image', None):
-            qr_img_html = f"<div style='text-align:center;margin:6px 0'><img src='{escape(sale.etims_qr_image)}' style='width:140px;height:auto' /></div>"
+            qr_img_html = f"<div style='text-align:center;margin:6px 0'><img src='{escape(sale.etims_qr_image)}' style='width:60mm;max-width:100%;height:auto;display:block;margin:0 auto' /></div>"
+
+        # Helper to read store metadata from SystemConfig (admin editable)
+        def get_config(key, default=''):
+            try:
+                cfg = SystemConfig.objects.filter(key=key).first()
+                return cfg.value if cfg else default
+            except Exception:
+                return default
+
+        store_name = get_config('STORE_NAME', sale.branch.name if sale.branch else 'Supermarket')
+        store_branch = get_config('STORE_BRANCH', '')
+        store_address = get_config('STORE_ADDRESS', sale.branch.location if sale.branch and getattr(sale.branch, 'location', None) else '')
+        store_phone = get_config('STORE_PHONE', sale.branch.phone if sale.branch and getattr(sale.branch, 'phone', None) else '')
+        store_email = get_config('STORE_EMAIL', '')
+        store_tax_id = get_config('STORE_TAX_ID', sale.branch.tax_id if sale.branch and getattr(sale.branch, 'tax_id', None) else '')
+        store_website = get_config('STORE_WEBSITE', '')
+        store_tagline = get_config('STORE_TAGLINE', '')
 
         # amount in words (KES)
         def amount_in_words(amount):
@@ -244,54 +262,158 @@ class SaleViewSet(viewsets.ModelViewSet):
             item_rows += f"<div style='display:flex;justify-content:space-between;gap:4px;font-size:11px'><div style='width:55px'>{code}</div><div style='flex:1;text-align:left'>{desc}</div><div style='width:28px;text-align:center'>{qty}</div><div style='width:55px;text-align:right'>{price}</div><div style='width:55px;text-align:right'>{ext}</div></div>"
 
         payments_total = sum([p.amount for p in sale.payments.all()]) if sale.payments.exists() else sale.total_amount
-        change_amount = payments_total - sale.total_amount if sale.payments.exists() else 0
+        change_amount = payments_total - sale.total_amount if sale.payments.exists() else Decimal('0.00')
+
+        # VAT (assume 16% for receipt display). If prices are tax-inclusive, VAT component = total * 16/116
+        try:
+            vat_rate = Decimal('16.00')
+            vat_amount = (sale.total_amount * vat_rate) / (Decimal('100.00') + vat_rate)
+            vat_amount = vat_amount.quantize(Decimal('0.01'))
+            vatable_amount = (sale.total_amount - vat_amount).quantize(Decimal('0.01'))
+        except Exception:
+            vat_amount = Decimal('0.00')
+            vatable_amount = Decimal('0.00')
+
+        def fmt(val):
+            try:
+                return f"{Decimal(val).quantize(Decimal('0.01')):,.2f}"
+            except Exception:
+                return str(val)
 
         html = f"""
         <html>
         <head>
             <meta charset='utf-8'>
+            <meta name='viewport' content='width=device-width, initial-scale=1'>
             <title>Receipt {escape(sale.sale_number)}</title>
             <style>
-                @media print {{ @page {{ margin:0; }} }}
-                body {{ font-family: monospace; font-size:12px; line-height:1.15; margin:6px; }}
-                .receipt {{ max-width:70mm; width:70mm; margin:0 auto; }}
+                @page {{ size: 80mm auto; margin:0; padding:0; }}
+                * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+                html {{ width: 80mm; }}
+                body {{ font-family: monospace; font-size:11px; line-height:1.2; margin:0; padding:4px; width:80mm; }}
+                .receipt {{ width:80mm; margin:0 auto; }}
+                .header {{ text-align:center; margin-bottom:8px; }}
+                .header-main {{ font-size:12px; font-weight:700; margin-bottom:2px; }}
+                .header-sub {{ font-size:10px; margin:1px 0; }}
+                .section {{ margin-bottom:6px; }}
+                .section-title {{ font-weight:700; font-size:10px; margin-bottom:3px; border-bottom:1px dashed #000; padding-bottom:2px; }}
+                .items-header {{ display:flex; font-weight:700; font-size:10px; margin-bottom:2px; padding-bottom:2px; border-bottom:1px solid #000; }}
+                .item-row {{ display:flex; font-size:10px; margin:1px 0; }}
+                .col-code {{ width:50px; flex-shrink:0; }}
+                .col-desc {{ flex:1; margin:0 4px; word-break:break-word; }}
+                .col-qty {{ width:30px; text-align:center; flex-shrink:0; }}
+                .col-price {{ width:50px; text-align:right; flex-shrink:0; }}
+                .col-ext {{ width:60px; text-align:right; flex-shrink:0; }}
+                .totals-row {{ display:flex; justify-content:space-between; margin:2px 0; font-size:10px; }}
+                .totals-label {{ font-weight:700; }}
+                .totals-value {{ text-align:right; }}
+                .total-final {{ display:flex; justify-content:space-between; font-weight:700; font-size:11px; margin:4px 0; padding:2px 0; border-top:1px solid #000; border-bottom:1px solid #000; }}
+                .hr {{ border: none; border-top:1px dashed #000; margin:4px 0; height:1px; }}
+                .payment-section {{ display:flex; justify-content:space-between; margin:2px 0; font-size:10px; }}
+                .amount-words {{ font-weight:700; font-size:11px; margin:4px 0; text-align:center; }}
                 .center {{ text-align:center; }}
-                .row {{ display:flex; justify-content:space-between; margin:2px 0; }}
-                hr {{ border: none; border-top:1px dashed #000; margin:6px 0; }}
-                .small {{ font-size:11px; }}
-                .muted {{ color:#666; font-size:11px }}
-                .bold {{ font-weight:700 }}
+                .small {{ font-size:10px; }}
+                .qr-container {{ text-align:center; margin:8px 0; }}
+                .qr-img {{ width:60mm; max-width:100%; height:auto; display:block; margin:0 auto; }}
+                .footer {{ text-align:center; font-size:9px; margin-top:6px; }}
+                .footer-line {{ margin:2px 0; }}
+                .muted {{ color:#666; }}
+                @media print {{ * {{ margin: 0; padding: 0; }} html {{ width: 80mm; }} body {{ width: 80mm; margin: 0; padding: 4px; }} .receipt {{ width: 80mm; }} }}
             </style>
         </head>
         <body>
         <div class='receipt'>
-        <div class='center bold' style='font-size:13px'>{escape(sale.branch.name if sale.branch else 'Supermarket')}</div>
-        <div class='center small'>{escape(sale.branch.location if sale.branch and getattr(sale.branch, 'location', None) else '')}</div>
-        <div class='center small'>{escape(sale.branch.phone if sale.branch and getattr(sale.branch, 'phone', None) else '')}</div>
-        <div class='center small'>POS:{escape(str(sale.id))}  Time:{escape((sale.created_at or sale.updated_at).strftime('%d/%m/%Y %H:%M:%S'))}</div>
-        <div class='center small'>Transaction #: {escape(sale.sale_number)}</div>
-        <div style='margin-top:6px;font-size:11px;font-weight:700;display:flex;justify-content:space-between'><div style='width:55px'>CODE</div><div style='flex:1;text-align:left'>DESCRIPTION</div><div style='width:28px;text-align:center'>QTY</div><div style='width:55px;text-align:right'>PRICE</div><div style='width:55px;text-align:right'>EXT</div></div>
-        {item_rows}
-        <hr />
-        {row('Totals', '')}
-        {row('Subtotal', sale.subtotal)}
-        {row('Discount', sale.discount_amount)}
-        {row('Total', sale.total_amount)}
-        <div style='margin-top:6px'>
-        <div style='display:flex;justify-content:space-between'><div class='small'>Tendered</div><div class='small'>{escape(str(payments_total))}</div></div>
-        <div style='display:flex;justify-content:space-between'><div class='small'>Change</div><div class='small'>{escape(str(change_amount))}</div></div>
-        <div style='margin-top:6px' class='bold'>{escape(amount_in_words(sale.total_amount))}</div>
-        </div>
-        <div style='margin-top:6px' class='small'>
-        <div><strong>KRA eTIMS</strong></div>
-        <div>Signature: {escape(sale.rcpt_signature or '')}</div>
-        </div>
-        {qr_img_html}
-        <div style='margin-top:8px;font-size:11px'>
-        <div>You were served by: {escape(sale.created_by.get_full_name() if sale.created_by else (sale.cashier.get_full_name() if sale.cashier else ''))}</div>
-        <div class='muted'>VortexPOS Ver:2.0.1</div>
-        <div class='muted'>CU Serial No: KRA{escape(sale.sale_number)}</div>
-        </div>
+            <!-- HEADER -->
+            <div class='header'>
+                <div class='header-main'>{escape(store_name)}</div>
+                {f"<div class='header-sub'>{escape(store_branch)}</div>" if store_branch else ''}
+                {f"<div class='header-sub'>{escape(store_address)}</div>" if store_address else ''}
+                {f"<div class='header-sub'>{escape(store_phone)}</div>" if store_phone else ''}
+                {f"<div class='header-sub'>{escape(store_email)}</div>" if store_email else ''}
+                {f"<div class='header-sub' style='font-style:italic;font-size:9px'>{escape(store_tagline)}</div>" if store_tagline else ''}
+                <div class='hr'></div>
+                <div class='header-sub'>POS: {escape(str(sale.id))}</div>
+                <div class='header-sub'>{escape((sale.created_at or sale.updated_at).strftime('%d/%m/%Y %H:%M:%S'))}</div>
+                <div class='header-sub'>Receipt #: {escape(sale.sale_number)}</div>
+                {f"<div class='header-sub' style='font-size:9px'>Tax ID: {escape(store_tax_id)}</div>" if store_tax_id else ''}
+            </div>
+
+            <!-- ITEMS SECTION -->
+            <div class='section'>
+                <div class='items-header'>
+                    <div class='col-code'>CODE</div>
+                    <div class='col-desc'>DESCRIPTION</div>
+                    <div class='col-qty'>QTY</div>
+                    <div class='col-price'>PRICE</div>
+                    <div class='col-ext'>EXT</div>
+                </div>
+                {item_rows}
+            </div>
+
+            <div class='hr'></div>
+
+            <!-- TOTALS SECTION -->
+            <div class='section'>
+                {row('Subtotal', fmt(sale.subtotal))}
+                {row('Discount', fmt(sale.discount_amount))}
+                <div class='total-final'>
+                    <div>TOTAL</div>
+                    <div>{fmt(sale.total_amount)}</div>
+                </div>
+            </div>
+
+            <!-- PAYMENT SECTION -->
+            <div class='section'>
+                <div class='payment-section'>
+                    <div>Tendered</div>
+                    <div>{fmt(payments_total)}</div>
+                </div>
+                <div class='payment-section'>
+                    <div>Change</div>
+                    <div>{fmt(change_amount)}</div>
+                </div>
+            </div>
+
+            <div class='amount-words'>{escape(amount_in_words(sale.total_amount))}</div>
+
+            <!-- TAX DETAILS SECTION -->
+            <div class='section'>
+                <div class='section-title'>TAX DETAILS</div>
+                <div style='display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px'>
+                    <div style='flex:1'>CODE</div>
+                    <div style='flex:1;text-align:right'>VATABLE</div>
+                    <div style='flex:1;text-align:right'>VAT</div>
+                </div>
+                <div style='display:flex;justify-content:space-between;font-size:10px'>
+                    <div style='flex:1'>V</div>
+                    <div style='flex:1;text-align:right'>{fmt(vatable_amount)}</div>
+                    <div style='flex:1;text-align:right'>{fmt(vat_amount)}</div>
+                </div>
+            </div>
+
+            <div class='hr'></div>
+
+            <!-- KRA ETIMS SECTION -->
+            <div class='section'>
+                <div class='section-title'>KRA eTIMS</div>
+                <div class='small' style='word-break:break-all;margin-bottom:4px'>
+                    <strong>Signature:</strong>
+                    <div style='font-size:9px;word-break:break-all'>{escape(sale.rcpt_signature or '')}</div>
+                </div>
+            </div>
+
+            <!-- QR CODE SECTION (AT BOTTOM) -->
+            <div class='qr-container'>
+                {qr_img_html}
+            </div>
+
+            <!-- FOOTER SECTION -->
+            <div class='footer'>
+                <div class='footer-line'>Served by: {escape(sale.created_by.get_full_name() if sale.created_by else (sale.cashier.get_full_name() if sale.cashier else 'N/A'))}</div>
+                <div class='footer-line muted'>CU Serial: KRA{escape(sale.sale_number)}</div>
+                {f"<div class='footer-line muted' style='font-size:8px'>{escape(store_website)}</div>" if store_website else ''}
+                <div class='footer-line' style='margin-top:4px'>Thank you for your purchase!</div>
+            </div>
         </div>
         </body>
         </html>
