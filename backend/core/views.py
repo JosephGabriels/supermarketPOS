@@ -96,8 +96,9 @@ class UserViewSet(viewsets.ModelViewSet):
         
         # Filter by role for non-admins
         if user.role == 'manager':
-            # Managers can only see users in their branch
-            queryset = queryset.filter(branch=user.branch)
+            # Managers can see all users (or users in their branch if assigned)
+            if user.branch:
+                queryset = queryset.filter(branch=user.branch)
         elif user.role == 'cashier':
             # Cashiers can only see themselves
             queryset = queryset.filter(id=user.id)

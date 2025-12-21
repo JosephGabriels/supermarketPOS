@@ -11,7 +11,7 @@ class BranchSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-    branch_name = serializers.CharField(source='branch.name', read_only=True)
+    branch_name = serializers.SerializerMethodField()
     password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     confirm_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     full_name = serializers.SerializerMethodField()
@@ -24,6 +24,9 @@ class UserSerializer(serializers.ModelSerializer):
     
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}".strip() or obj.username
+    
+    def get_branch_name(self, obj):
+        return obj.branch.name if obj.branch else None
     
     def validate(self, attrs):
         password = attrs.get('password')
