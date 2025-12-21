@@ -1,0 +1,35 @@
+COMMERCIAL LICENSE
+
+This template is licensed for commercial use under the Evato Market Terms.
+You are permitted to:
+- Use this template for commercial projects
+- Modify and customize the code for your business needs
+- Use in unlimited projects without additional fees
+- Remove attribution (optional)
+- Create derivative works
+
+You are NOT permitted to:
+- Resell or redistribute this template as-is
+- Share the source code publicly
+- Use for competing template creation or resale
+- Claim authorship of the original template
+- Use in illegal or prohibited activities
+
+PACKAGE CONTENTS:
+- React TypeScript Dashboard Template
+- Complete source code and components
+- Comprehensive documentation
+- Professional UI component library
+- Dark/light theme support
+- Responsive design system
+
+TECHNICAL SUPPORT:
+For technical support or customization services, please contact through your Evato account.
+
+UPDATES:
+This template may receive updates. Check your Envato purchase for version history.
+
+For full license terms, visit: https://themeforest.net/licenses
+
+Copyright © 2024 Reactz. All rights reserved.
+Licensed under the Evato Commercial License.

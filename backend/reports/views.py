@@ -253,3 +253,232 @@ def sales_summary(request):
     
     serializer = SalesSummarySerializer(summary_data)
     return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_stats(request):
+    user = request.user
+    now = timezone.now()
+    today = now.date()
+    month_start = today.replace(day=1)
+    
+    data = {}
+    
+    if user.role == 'admin':
+        # Admin sees global stats
+        sales_month = Sale.objects.filter(created_at__date__gte=month_start, status='completed')
+        total_revenue = sales_month.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        total_orders = sales_month.count()
+        active_users = User.objects.filter(is_active=True).count()
+        
+        # Calculate changes (mock logic for now or compare with previous month)
+        prev_month_start = (month_start - timedelta(days=1)).replace(day=1)
+        prev_month_end = month_start - timedelta(days=1)
+        sales_prev_month = Sale.objects.filter(
+            created_at__date__gte=prev_month_start, 
+            created_at__date__lte=prev_month_end, 
+            status='completed'
+        )
+        prev_revenue = sales_prev_month.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        
+        revenue_change = 0
+        if prev_revenue > 0:
+            revenue_change = ((total_revenue - prev_revenue) / prev_revenue) * 100
+            
+        data = {
+            'role': 'admin',
+            'totalRevenue': str(total_revenue),
+            'totalRevenueChange': f"{revenue_change:+.1f}%",
+            'activeUsers': active_users,
+            'activeUsersChange': '+0%', # Placeholder
+            'totalOrders': total_orders,
+            'totalOrdersChange': '+0%', # Placeholder
+            'conversionRate': 'N/A',
+            'conversionRateChange': '0%',
+        }
+        
+    elif user.role == 'manager':
+        # Manager sees branch stats
+        branch = user.branch
+        sales_month = Sale.objects.filter(
+            branch=branch,
+            created_at__date__gte=month_start, 
+            status='completed'
+        )
+        total_revenue = sales_month.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        total_orders = sales_month.count()
+        active_users = User.objects.filter(branch=branch, is_active=True).count()
+        
+        data = {
+            'role': 'manager',
+            'branch': branch.name,
+            'totalRevenue': str(total_revenue),
+            'totalRevenueChange': '+0%', # Placeholder
+            'activeUsers': active_users,
+            'activeUsersChange': '+0%',
+            'totalOrders': total_orders,
+            'totalOrdersChange': '+0%',
+            'conversionRate': 'N/A',
+            'conversionRateChange': '0%',
+        }
+        
+    elif user.role == 'cashier':
+        # Cashier sees own stats for today
+        my_sales_today = Sale.objects.filter(
+            cashier=user,
+            created_at__date=today,
+            status='completed'
+        )
+        total_revenue = my_sales_today.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        total_orders = my_sales_today.count()
+        
+        # Shifts this month
+        shifts_month = Shift.objects.filter(
+            cashier=user,
+            opening_time__date__gte=month_start
+        ).count()
+        
+        data = {
+            'role': 'cashier',
+            'totalRevenue': str(total_revenue), # Today's revenue
+            'totalRevenueChange': 'Today',
+            'activeUsers': shifts_month, # Using this field for Shifts count
+            'activeUsersChange': 'Shifts',
+            'totalOrders': total_orders,
+            'totalOrdersChange': 'Today',
+            'conversionRate': 'N/A',
+            'conversionRateChange': '0%',
+        }
+    
+    return Response(data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def recent_activity(request):
+    user = request.user
+    activities = []
+    
+    # Get recent sales
+    sales_qs = Sale.objects.filter(status='completed').select_related('cashier').order_by('-created_at')
+    
+    if user.role == 'manager':
+        sales_qs = sales_qs.filter(branch=user.branch)
+    elif user.role == 'cashier':
+        sales_qs = sales_qs.filter(cashier=user)
+        
+    # Get last 10 sales
+    recent_sales = sales_qs[:10]
+    
+    from django.utils.timesince import timesince
+    
+    for sale in recent_sales:
+        time_ago = timesince(sale.created_at)
+        # Keep it short, e.g., "2 minutes" -> "2 min ago"
+        time_display = f"{time_ago.split(',')[0]} ago"
+        
+        activities.append({
+            'id': sale.id,
+            'type': 'sale',
+            'message': f"Sale #{sale.sale_number}",
+            'time': time_display,
+            'amount': f"KES {sale.total_amount}",
+            'user': sale.cashier.get_full_name() or sale.cashier.username
+        })
+        
+    return Response(activities)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def revenue_chart_data(request):
+    user = request.user
+    
+    # Last 6 months
+    today = timezone.now().date()
+    months = []
+    for i in range(5, -1, -1):
+        d = today.replace(day=1) - timedelta(days=i*30)
+        months.append(d.replace(day=1))
+        
+    data = []
+    
+    for month_start in months:
+        # Calculate month end
+        if month_start.month == 12:
+            month_end = month_start.replace(year=month_start.year + 1, month=1, day=1) - timedelta(days=1)
+        else:
+            month_end = month_start.replace(month=month_start.month + 1, day=1) - timedelta(days=1)
+            
+        sales_qs = Sale.objects.filter(
+            created_at__date__gte=month_start,
+            created_at__date__lte=month_end,
+            status='completed'
+        )
+        
+        if user.role == 'manager':
+            sales_qs = sales_qs.filter(branch=user.branch)
+        # Cashiers don't see this chart usually, but if they did, filter by cashier?
+        # For now assuming only Admin/Manager see charts as per Dashboard.tsx
+            
+        revenue = sales_qs.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        orders = sales_qs.count()
+        
+        # Unique customers (if we had customer tracking linked to sales properly)
+        # For now, just count unique sales as a proxy or 0
+        users = 0 
+        
+        data.append({
+            'month': month_start.strftime('%b'),
+            'revenue': float(revenue),
+            'users': users,
+            'orders': orders
+        })
+        
+    return Response(data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def sales_channels_data(request):
+    user = request.user
+    
+    # In a real app, we might have 'channel' field on Sale (e.g. POS, Online, App)
+    # For this system, we can simulate channels based on payment methods or just return mock data 
+    # BUT the user asked for REAL data.
+    # Since we don't have explicit "channels", let's use Payment Methods as a proxy for "Channels" 
+    # or just group by something relevant.
+    
+    # Let's use Payment Methods as "Channels" for now as it's the closest real data we have
+    
+    sales_qs = Sale.objects.filter(status='completed')
+    if user.role == 'manager':
+        sales_qs = sales_qs.filter(branch=user.branch)
+        
+    # We need to join with Payment to get methods
+    # This might be heavy, so let's just aggregate on Payment model directly
+    
+    payments_qs = Payment.objects.filter(status='completed')
+    if user.role == 'manager':
+        payments_qs = payments_qs.filter(sale__branch=user.branch)
+        
+    methods = payments_qs.values('payment_method').annotate(total=Count('id')).order_by('-total')
+    
+    data = []
+    for item in methods:
+        method_name = item['payment_method'].replace('_', ' ').title()
+        data.append({
+            'name': method_name,
+            'value': item['total']
+        })
+        
+    # If no data, return empty or defaults
+    if not data:
+        data = [
+            {'name': 'Cash', 'value': 0},
+            {'name': 'Mpesa', 'value': 0},
+            {'name': 'Card', 'value': 0}
+        ]
+        
+    return Response(data)

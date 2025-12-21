@@ -1,0 +1,69 @@
+{
+  "name": "reactz-dashboard-template",
+  "version": "2.0.0",
+  "description": "Production-ready React TypeScript ecommerce dashboard template with modern UI components, dark/light themes, and comprehensive analytics",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.552.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "recharts": "^3.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/forms": "^0.5.10",
+    "@tailwindcss/typography": "^0.5.19",
+    "@tailwindcss/vite": "^4.1.16",
+    "@types/node": "^24.6.0",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "@types/recharts": "^1.8.29",
+    "@vitejs/plugin-react": "^5.0.4",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.16",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.7"
+  },
+  "keywords": [
+    "react",
+    "typescript",
+    "dashboard",
+    "ecommerce",
+    "template",
+    "admin-panel",
+    "ui-components",
+    "responsive",
+    "dark-theme",
+    "typescript",
+    "modern-ui",
+    "analytics",
+    "inventory",
+    "customer-management",
+    "react-components",
+    "tailwind-css",
+    "production-ready"
+  ],
+  "author": "Reactz",
+  "license": "Commercial",
+  "repository": {
+    "type": "git",
+    "url": "envato-purchase"
+  },
+  "homepage": "https://themeforest.net/item/reactz-dashboard",
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ]
+}
