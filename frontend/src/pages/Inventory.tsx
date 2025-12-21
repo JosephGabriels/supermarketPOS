@@ -22,6 +22,7 @@ import { ErrorMessage } from '../components/ui/ErrorBoundary';
 import { LazyWrapper } from '../components/ui/LazyWrapper';
 import { CurrencyDisplay } from '../components/ui/CurrencyDisplay';
 import type { TableColumn } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 import { productsApi } from '../services/productsApi';
 import { suppliersApi } from '../services/suppliersApi';
 import { stockMovementsApi } from '../services/productsApi';
@@ -32,6 +33,8 @@ export const Inventory: React.FC<{ isDark: boolean; themeClasses: Record<string,
   isDark,
   themeClasses
 }) => {
+  const { isManager, isAdmin } = useAuth();
+  const canEdit = isManager || isAdmin;
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState('overview');
@@ -181,7 +184,7 @@ export const Inventory: React.FC<{ isDark: boolean; themeClasses: Record<string,
     }
   ];
 
-  const actionButtons = [
+  const actionButtons = !canEdit ? [] : [
     {
       label: 'Adjust Stock',
       icon: ({ size, className }: { size?: number; className?: string }) => (
@@ -219,6 +222,7 @@ export const Inventory: React.FC<{ isDark: boolean; themeClasses: Record<string,
           <h2 className={`text-3xl font-bold ${themeClasses.text} mb-2`}>Inventory Management</h2>
           <p className={themeClasses.textSecondary}>Track and manage your inventory levels</p>
         </div>
+        {canEdit && (
         <div className="flex items-center gap-3">
           <button className={`${themeClasses.hover} px-4 py-2 rounded-xl border ${themeClasses.card} flex items-center gap-2`}>
             <Upload size={20} className={themeClasses.text} /> Import
@@ -227,6 +231,7 @@ export const Inventory: React.FC<{ isDark: boolean; themeClasses: Record<string,
             <Download size={20} /> Export
           </button>
         </div>
+        )}
       </div>
 
       {/* Tab Navigation */}

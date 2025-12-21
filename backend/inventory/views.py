@@ -130,7 +130,7 @@ class StockMovementViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = StockMovement.objects.all()
         
-        if self.request.user.role != 'admin':
+        if self.request.user.role != 'admin' and self.request.user.branch:
             queryset = queryset.filter(branch=self.request.user.branch)
         
         product = self.request.query_params.get('product', None)
