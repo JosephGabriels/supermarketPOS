@@ -31,8 +31,14 @@ class SaleViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = Sale.objects.all()
 
-        if self.request.user.role != 'admin' and self.request.user.branch:
-            queryset = queryset.filter(branch=self.request.user.branch)
+        user = self.request.user
+        if user.role == 'cashier':
+            queryset = queryset.filter(cashier=user)
+        elif user.role == 'manager' and user.branch:
+            queryset = queryset.filter(branch=user.branch)
+        elif user.role != 'admin' and user.branch:
+             # Fallback for other roles if any, though currently only cashier/manager/admin
+            queryset = queryset.filter(branch=user.branch)
         
         status_filter = self.request.query_params.get('status', None)
         cashier = self.request.query_params.get('cashier', None)
@@ -124,9 +130,10 @@ class SaleViewSet(viewsets.ModelViewSet):
             quantity = item_data['quantity']
             discount = item_data.get('discount', Decimal('0.00'))
             
-            tax_rate = Decimal('0.00')  # Prices are tax-inclusive
+            tax_rate = Decimal('16.00')  # Prices are tax-inclusive
             item_subtotal = (unit_price * quantity) - discount
-            item_tax = item_subtotal * (tax_rate / 100)
+            # Calculate tax from tax-inclusive price: Tax = Price * (Rate / (100 + Rate))
+            item_tax = item_subtotal * (tax_rate / (Decimal('100.00') + tax_rate))
             
             sale_item = SaleItem.objects.create(
                 sale=sale,
