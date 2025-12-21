@@ -124,7 +124,8 @@ class ProductViewSet(viewsets.ModelViewSet):
 class StockMovementViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = StockMovement.objects.all()
     serializer_class = StockMovementSerializer
-    permission_classes = [IsAuthenticated, IsManager]
+    # Allow cashiers to view stock movements for their branch as well as managers/admins
+    permission_classes = [IsAuthenticated, IsCashier]
     
     def get_queryset(self):
         queryset = StockMovement.objects.all()

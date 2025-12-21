@@ -6,16 +6,19 @@ from suppliers.serializers import SupplierSerializer
 
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
+    category_details = CategorySerializer(source='category', read_only=True)
     branch_name = serializers.CharField(source='branch.name', read_only=True)
+    branch_details = BranchSerializer(source='branch', read_only=True)
     supplier_name = serializers.CharField(source='supplier.name', read_only=True)
+    supplier_details = SupplierSerializer(source='supplier', read_only=True)
     is_low_stock = serializers.BooleanField(read_only=True)
     price_with_tax = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     
     class Meta:
         model = Product
-        fields = ['id', 'name', 'barcode', 'category', 'category_name', 'description', 'price', 
-                  'cost_price', 'stock_quantity', 'reorder_level', 'branch', 'branch_name', 
-                  'supplier', 'supplier_name', 'is_active', 'tax_rate', 'image', 'is_low_stock', 
+        fields = ['id', 'name', 'barcode', 'category', 'category_name', 'category_details', 'description', 'price', 
+                  'cost_price', 'stock_quantity', 'reorder_level', 'branch', 'branch_name', 'branch_details',
+                  'supplier', 'supplier_name', 'supplier_details', 'is_active', 'tax_rate', 'image', 'is_low_stock', 
                   'price_with_tax', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 

@@ -78,8 +78,10 @@ class PaymentViewSet(viewsets.ModelViewSet):
         
         total_paid = total_payments + data['amount']
         if total_paid >= sale.total_amount:
-            sale.status = 'completed'
-            sale.save()
+            try:
+                sale.finalize(user=request.user)
+            except Exception as e:
+                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         
         response_serializer = PaymentSerializer(payment)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
@@ -154,8 +156,10 @@ class PaymentViewSet(viewsets.ModelViewSet):
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
         
         if total_payments >= payment.sale.total_amount:
-            payment.sale.status = 'completed'
-            payment.sale.save()
+            try:
+                payment.sale.finalize(user=request.user)
+            except Exception as e:
+                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         
         serializer = PaymentSerializer(payment)
         return Response(serializer.data)
@@ -196,8 +200,10 @@ def mpesa_callback(request):
                 ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
                 
                 if total_payments >= payment.sale.total_amount:
-                    payment.sale.status = 'completed'
-                    payment.sale.save()
+                    try:
+                        payment.sale.finalize(user=None)
+                    except Exception as e:
+                        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
             
             return Response({'message': 'Callback processed successfully'})
         

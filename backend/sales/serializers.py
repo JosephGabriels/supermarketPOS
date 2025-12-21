@@ -52,9 +52,10 @@ class SaleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Sale
         fields = ['id', 'sale_number', 'branch', 'branch_name', 'cashier', 'cashier_name', 
-                  'customer', 'customer_details', 'subtotal', 'tax_amount', 'discount_amount', 
-                  'total_amount', 'status', 'status_display', 'shift', 'notes', 'items', 
-                  'created_at', 'updated_at']
+              'customer', 'customer_details', 'subtotal', 'tax_amount', 'discount_amount', 
+              'total_amount', 'status', 'status_display', 'shift', 'notes', 'items', 
+                  'etims_response', 'rcpt_signature', 'etims_qr', 'etims_qr_image', 'etims_submitted', 'etims_submitted_at',
+              'created_at', 'updated_at']
         read_only_fields = ['sale_number', 'created_at', 'updated_at']
     
     def get_cashier_name(self, obj):
