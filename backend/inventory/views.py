@@ -27,20 +27,23 @@ class ProductViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = Product.objects.filter(is_active=True)
-
-        if self.request.user.role != 'admin' and self.request.user.branch:
-            queryset = queryset.filter(branch=self.request.user.branch)
-        
+        user = self.request.user
+        branch_id = None
+        if user.role == 'admin':
+            branch_id = self.request.query_params.get('branch')
+        if not branch_id:
+            branch_id = user.branch_id if hasattr(user, 'branch_id') else None
+        if branch_id:
+            queryset = queryset.filter(branch=branch_id)
         barcode = self.request.query_params.get('barcode', None)
         search = self.request.query_params.get('search', None)
         category = self.request.query_params.get('category', None)
         low_stock = self.request.query_params.get('low_stock', None)
-        
         if barcode:
             queryset = queryset.filter(barcode=barcode)
         if search:
             queryset = queryset.filter(
-                Q(name__icontains=search) | 
+                Q(name__icontains=search) |
                 Q(barcode__icontains=search) |
                 Q(description__icontains=search)
             )
@@ -48,28 +51,47 @@ class ProductViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(category_id=category)
         if low_stock == 'true':
             queryset = [p for p in queryset if p.is_low_stock]
-        
         return queryset.order_by('name')
     
     def perform_create(self, serializer):
+        user = self.request.user
+        branch_id = None
+        if user.role == 'admin':
+            branch_id = self.request.data.get('branch')
+        if not branch_id:
+            branch_id = user.branch_id if hasattr(user, 'branch_id') else None
         serializer.save(
-            branch=self.request.user.branch,
-            created_by=self.request.user
+            branch_id=branch_id,
+            created_by=user
         )
     
     def perform_update(self, serializer):
-        serializer.save(updated_by=self.request.user)
+        user = self.request.user
+        branch_id = None
+        if user.role == 'admin':
+            branch_id = self.request.data.get('branch')
+        if not branch_id:
+            branch_id = user.branch_id if hasattr(user, 'branch_id') else None
+        serializer.save(
+            branch_id=branch_id,
+            updated_by=user
+        )
     
     @action(detail=False, methods=['get'])
     def lookup(self, request):
         barcode = request.query_params.get('barcode', None)
-        if not barcode:
-            return Response({'error': 'Barcode is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
+        branch_id = None
+        user = request.user
+        if user.role == 'admin':
+            branch_id = request.query_params.get('branch')
+        if not branch_id:
+            branch_id = user.branch_id if hasattr(user, 'branch_id') else None
+        if not barcode or not branch_id:
+            return Response({'error': 'Barcode and branch are required'}, status=status.HTTP_400_BAD_REQUEST)
         try:
             product = Product.objects.get(
                 barcode=barcode,
-                branch=request.user.branch,
+                branch=branch_id,
                 is_active=True
             )
             serializer = ProductDetailSerializer(product)

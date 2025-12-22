@@ -11,6 +11,7 @@ export interface DashboardStats {
   totalOrdersChange: string;
   conversionRate: string;
   conversionRateChange: string;
+  totalCustomers: number;
   role?: string;
   branch?: string;
 }

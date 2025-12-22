@@ -228,6 +228,8 @@ export const Categories: React.FC<CategoriesProps> = ({ isDark, themeClasses }) 
           themeClasses={themeClasses}
           isDark={isDark}
           emptyMessage={searchQuery ? "No categories found matching your search" : "No categories found"}
+          searchable={false}
+          filterable={false}
         />
       </div>
 

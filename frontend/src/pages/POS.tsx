@@ -16,6 +16,7 @@ import {
   Zap
 } from 'lucide-react';
 import { productsApi } from '../services/productsApi';
+import { branchesApi, type Branch } from '../services/branchesApi';
 import { customersApi } from '../services/customersApi';
 import { salesApi } from '../services/salesApi';
 import { discountsApi } from '../services/salesApi';
@@ -52,6 +53,8 @@ interface DiscountCode {
 
 export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
   const { user } = useAuth();
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<number | null>(null);
   const [products, setProducts] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -79,11 +82,15 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
     const loadData = async () => {
       try {
         setLoading(true);
-        const [productsRes, customersRes] = await Promise.all([
-          productsApi.getProducts(),
-          customersApi.getCustomers()
+        let branchId = user?.branch;
+        if (user?.role === 'admin' && selectedBranch) {
+          branchId = selectedBranch;
+        }
+        const [productsRes, customersRes, branchesRes] = await Promise.all([
+          productsApi.getProducts(branchId ? { branch: branchId } : undefined),
+          customersApi.getCustomers(),
+          user?.role === 'admin' ? branchesApi.getActiveBranches() : Promise.resolve([])
         ]);
-
         const normalizeList = (res: any) => {
           if (!res) return [];
           if (Array.isArray(res)) return res;
@@ -94,9 +101,16 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
           }
           return [];
         };
-
         setProducts(normalizeList(productsRes));
         setCustomers(normalizeList(customersRes));
+        setBranches(branchesRes || []);
+        if (user?.role === 'admin' && branchesRes.length && !selectedBranch) {
+          // Default to user's branch if available, otherwise first active branch
+          const defaultBranch = user.branch && branchesRes.find(b => b.id === user.branch) 
+            ? user.branch 
+            : branchesRes[0].id;
+          setSelectedBranch(defaultBranch);
+        }
       } catch (err) {
         console.error('Error loading data:', err);
         setError('Failed to load data');
@@ -105,7 +119,7 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
       }
     };
     loadData();
-  }, []);
+  }, [user, selectedBranch]);
 
   // Check for open shift
   useEffect(() => {
@@ -172,27 +186,33 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
   const addProductByBarcode = async (barcode: string) => {
     if (!barcode.trim()) return;
     
+    let branchId = user?.branch ?? null;
+    if (user?.role === 'admin' && selectedBranch != null) {
+      branchId = selectedBranch;
+    }
+
     try {
-      const productRes = await productsApi.lookupByBarcode(barcode);
+      if (branchId == null) {
+        throw new Error('No branch selected or assigned for barcode lookup');
+      }
+      console.log('[POS Barcode Lookup]', { barcode, branchId, role: user?.role });
+      const productRes = await productsApi.lookupByBarcode(barcode, branchId);
       let product = productRes;
-      
       if (!product || typeof product !== 'object' || !product.id) {
         throw new Error('Invalid product data');
       }
-      
       addToCart(product);
       setBarcodeInput('');
       setError(null);
       setScanSuccess(true);
       setTimeout(() => setScanSuccess(false), 500);
-      
       // Re-focus on barcode input
       setTimeout(() => {
         const input = document.getElementById('barcode-input') as HTMLInputElement;
         if (input) input.focus();
       }, 100);
     } catch (err) {
-      console.error('Barcode lookup error:', err);
+      console.error('Barcode lookup error:', err, { barcode, branchId });
       setError(`Product not found: ${barcode}`);
       setScanSuccess(false);
       setTimeout(() => setError(null), 3000);
@@ -558,6 +578,31 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
 
   return (
     <div className={`min-h-screen ${isDark ? 'bg-gray-900' : 'bg-gray-50'} p-4 space-y-4`}>
+      {user?.role === 'admin' && (
+        <div className="mb-4 max-w-xs">
+          <label className="block text-sm font-medium mb-2">Branch</label>
+          <select
+            value={selectedBranch || ''}
+            onChange={e => setSelectedBranch(Number(e.target.value))}
+            className="w-full px-4 py-3 border rounded-xl"
+          >
+            {branches.map(branch => (
+              <option key={branch.id} value={branch.id}>{branch.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      {user?.role === 'cashier' && (
+        <div className="mb-4 max-w-xs">
+          <label className="block text-sm font-medium mb-2">Branch</label>
+          <input
+            type="text"
+            value={branches.find(b => b.id === user.branch)?.name || user.branch}
+            className="w-full px-4 py-3 border rounded-xl bg-gray-100 text-gray-500"
+            disabled
+          />
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>

@@ -55,39 +55,39 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDark, themeClasses }) =>
 
         setRevenueData(revenue);
         setTrafficData(traffic);
-        
+
         setStats([
-          { 
-            label: user?.role === 'cashier' ? 'My Sales Today' : 'Total Revenue', 
-            value: dashboardStats.totalRevenue, 
-            change: dashboardStats.totalRevenueChange, 
-            icon: DollarSign, 
-            up: !dashboardStats.totalRevenueChange.startsWith('-'), 
-            color: 'violet' 
+          {
+            label: user?.role === 'cashier' ? 'My Sales Today' : 'Total Revenue',
+            value: dashboardStats.totalRevenue,
+            change: dashboardStats.totalRevenueChange,
+            icon: DollarSign,
+            up: !dashboardStats.totalRevenueChange.startsWith('-'),
+            color: 'violet',
           },
-          { 
-            label: user?.role === 'cashier' ? 'My Shifts' : 'Active Customers', 
-            value: dashboardStats.activeUsers.toString(), 
-            change: dashboardStats.activeUsersChange, 
-            icon: Users, 
-            up: !dashboardStats.activeUsersChange.startsWith('-'), 
-            color: 'pink' 
+          {
+            label: user?.role === 'cashier' ? 'My Shifts' : 'Total Customers',
+            value: dashboardStats.totalCustomers?.toString() ?? '0',
+            change: '',
+            icon: Users,
+            up: true,
+            color: 'pink',
           },
-          { 
-            label: user?.role === 'cashier' ? 'My Transactions' : 'Total Sales', 
-            value: dashboardStats.totalOrders.toString(), 
-            change: dashboardStats.totalOrdersChange, 
-            icon: ShoppingCart, 
-            up: !dashboardStats.totalOrdersChange.startsWith('-'), 
-            color: 'emerald' 
+          {
+            label: user?.role === 'cashier' ? 'My Transactions' : 'Total Sales',
+            value: dashboardStats.totalOrders.toString(),
+            change: dashboardStats.totalOrdersChange,
+            icon: ShoppingCart,
+            up: !dashboardStats.totalOrdersChange.startsWith('-'),
+            color: 'emerald',
           },
-          { 
-            label: 'Conversion Rate', 
-            value: dashboardStats.conversionRate, 
-            change: dashboardStats.conversionRateChange, 
-            icon: TrendingUp, 
-            up: dashboardStats.conversionRateChange.startsWith('+'), 
-            color: 'amber' 
+          {
+            label: 'Conversion Rate',
+            value: dashboardStats.conversionRate,
+            change: dashboardStats.conversionRateChange,
+            icon: TrendingUp,
+            up: dashboardStats.conversionRateChange.startsWith('+'),
+            color: 'amber',
           },
         ]);
 
@@ -133,7 +133,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDark, themeClasses }) =>
           Welcome back, {user?.first_name || user?.username || 'User'}!
         </h2>
         <p className={themeClasses.textSecondary}>
-          {user?.branch?.name ? `${user.branch.name} Branch` : 'POS System'} - Here's what's happening today.
+          {user?.branch_details?.name ? `${user.branch_details.name} Branch` : 'POS System'} - Here's what's happening today.
         </p>
       </div>
 
@@ -190,40 +190,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDark, themeClasses }) =>
             </ResponsiveContainer>
           </div>
 
-          <div className={`${themeClasses.card} border backdrop-blur-xl rounded-2xl p-6 shadow-lg`}>
-            <div className="mb-6">
-              <h3 className={`text-xl font-bold ${themeClasses.text} mb-1`}>Sales Channels</h3>
-              <p className={themeClasses.textSecondary}>Sales distribution by channel</p>
-            </div>
-            <ResponsiveContainer width="100%" height={240}>
-              <PieChart>
-                <Pie 
-                  data={trafficData} 
-                  cx="50%" 
-                  cy="50%" 
-                  innerRadius={60} 
-                  outerRadius={80} 
-                  paddingAngle={5} 
-                  dataKey="value"
-                >
-                  {trafficData.map((_entry: any, index: number) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="space-y-2 mt-4">
-              {trafficData.map((item: any, i: number) => (
-                <div key={item.name} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }}></div>
-                    <span className={`${themeClasses.textSecondary} text-sm`}>{item.name}</span>
-                  </div>
-                  <span className={`${themeClasses.text} font-semibold text-sm`}>{item.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* Removed Sales Channels card as requested */}
         </div>
       )}
 

@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { branchesApi } from '../../services/branchesApi';
+import type { Branch } from '../../services/branchesApi';
 import { X, Eye, EyeOff, User, Mail, Shield, Phone, Hash } from 'lucide-react';
 import { type User as UserType, type CreateUserData, type UpdateUserData, type Role } from '../../services/usersApi';
 
@@ -11,6 +13,7 @@ interface CreateEditUserModalProps {
   availableRoles: Role[];
   themeClasses: any;
   isDark: boolean;
+  currentUser?: UserType | null;
 }
 
 export const CreateEditUserModal: React.FC<CreateEditUserModalProps> = ({
@@ -21,7 +24,8 @@ export const CreateEditUserModal: React.FC<CreateEditUserModalProps> = ({
   isEdit,
   availableRoles,
   themeClasses,
-  isDark
+  isDark,
+  currentUser
 }) => {
   const [formData, setFormData] = useState({
     username: '',
@@ -33,7 +37,9 @@ export const CreateEditUserModal: React.FC<CreateEditUserModalProps> = ({
     employee_id: '',
     password: '',
     confirm_password: '',
+    branch: '',
   });
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -52,6 +58,7 @@ export const CreateEditUserModal: React.FC<CreateEditUserModalProps> = ({
           employee_id: user.employee_id || '',
           password: '',
           confirm_password: '',
+          branch: user.branch ? String(user.branch) : '',
         });
       } else {
         setFormData({
@@ -64,11 +71,18 @@ export const CreateEditUserModal: React.FC<CreateEditUserModalProps> = ({
           employee_id: '',
           password: '',
           confirm_password: '',
+          branch: '',
         });
       }
       setError(null);
     }
   }, [isOpen, isEdit, user]);
+
+  useEffect(() => {
+    if (isOpen && isDark !== undefined) {
+      branchesApi.getActiveBranches().then(setBranches);
+    }
+  }, [isOpen, isDark]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,9 +115,13 @@ export const CreateEditUserModal: React.FC<CreateEditUserModalProps> = ({
       const submitData = isEdit
         ? {
             ...formData,
+            branch: formData.branch ? Number(formData.branch) : undefined,
             ...(formData.password ? { password: formData.password, confirm_password: formData.confirm_password } : {}),
           }
-        : formData;
+        : {
+            ...formData,
+            branch: formData.branch ? Number(formData.branch) : undefined,
+          };
 
       const result = await onSubmit(submitData);
       if (result.success) {
@@ -169,6 +187,29 @@ export const CreateEditUserModal: React.FC<CreateEditUserModalProps> = ({
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Branch (admin only) */}
+            {currentUser?.role === 'admin' && (
+              <div>
+                <label className={`block text-sm font-medium ${themeClasses.text} mb-2`}>
+                  Branch {isEdit ? '' : '*'}
+                </label>
+                <div className={`relative ${themeClasses.input} border rounded-lg px-4 py-3`}>
+                  <Shield className={`absolute left-3 top-3.5 ${themeClasses.textSecondary}`} size={20} />
+                  <select
+                    value={formData.branch}
+                    onChange={(e) => handleChange('branch', e.target.value)}
+                    className={`w-full pl-10 bg-transparent ${themeClasses.text} outline-none`}
+                    required={isEdit || true}
+                    disabled={loading}
+                  >
+                    <option value="">Select branch</option>
+                    {branches.map(branch => (
+                      <option key={branch.id} value={branch.id}>{branch.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
             {/* Username */}
             <div>
               <label className={`block text-sm font-medium ${themeClasses.text} mb-2`}>

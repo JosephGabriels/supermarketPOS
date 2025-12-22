@@ -159,7 +159,7 @@ class UserViewSet(viewsets.ModelViewSet):
             raise PermissionDenied('Admins cannot demote themselves.')
         
         # Managers cannot promote to admin/manager
-        if user.role == 'manager' and new_role in ['admin', 'manager']:
+        if user.role == 'manager' and new_role in ['admin', 'manager'] and new_role != instance.role:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied('Managers cannot promote users to admin or manager.')
         

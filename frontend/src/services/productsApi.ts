@@ -125,8 +125,10 @@ export const productsApi = {
     return httpClient.delete(`${ENDPOINTS.PRODUCTS}${id}/`);
   },
 
-  lookupByBarcode: async (barcode: string): Promise<Product> => {
-    const response = await httpClient.get<any>(ENDPOINTS.PRODUCT_LOOKUP, { barcode });
+  lookupByBarcode: async (barcode: string, branch?: number): Promise<Product> => {
+    const params: any = { barcode };
+    if (branch) params.branch = branch;
+    const response = await httpClient.get<any>(ENDPOINTS.PRODUCT_LOOKUP, params);
     return response || {};
   },
 

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, Lock, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { ApiError } from '../services/httpClient';
 
 interface LoginProps {
   isDark: boolean;
@@ -23,7 +24,13 @@ export const Login: React.FC<LoginProps> = ({ isDark }) => {
     try {
       await login(username, password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      let errorMessage = 'Login failed';
+      if (err instanceof ApiError) {
+        errorMessage = err.message || err.data?.detail || err.data?.message || 'Login failed';
+      } else if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -36,6 +43,9 @@ export const Login: React.FC<LoginProps> = ({ isDark }) => {
     textSecondary: isDark ? 'text-gray-400' : 'text-gray-600',
     input: isDark ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-300',
     button: 'bg-gradient-to-r from-violet-500 to-pink-500 hover:from-violet-600 hover:to-pink-600',
+    errorBg: isDark ? 'bg-red-900/20' : 'bg-red-500/10',
+    errorBorder: isDark ? 'border-red-700' : 'border-red-500/20',
+    errorText: isDark ? 'text-red-300' : 'text-red-400',
   };
 
   return (
@@ -97,8 +107,8 @@ export const Login: React.FC<LoginProps> = ({ isDark }) => {
           </div>
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
-              <p className="text-red-400 text-sm">{error}</p>
+            <div className={`${themeClasses.errorBg} border ${themeClasses.errorBorder} rounded-xl p-4`}>
+              <p className={`${themeClasses.errorText} text-sm`}>{error}</p>
             </div>
           )}
 
@@ -117,20 +127,6 @@ export const Login: React.FC<LoginProps> = ({ isDark }) => {
             )}
           </button>
         </form>
-
-        <div className="mt-8 pt-6 border-t border-gray-700/50">
-          <div className="text-center">
-            <p className={`text-sm ${themeClasses.textSecondary} mb-4`}>Demo Credentials</p>
-            <div className="space-y-2 text-sm">
-              <div className={`${themeClasses.input} border rounded-lg p-3`}>
-                <p className={themeClasses.textSecondary}>Admin: <span className={themeClasses.text}>joesky</span></p>
-              </div>
-              <div className={`${themeClasses.input} border rounded-lg p-3`}>
-                <p className={themeClasses.textSecondary}>Password: <span className={themeClasses.text}>Tavor@!07</span></p>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

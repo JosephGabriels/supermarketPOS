@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { branchesApi, type Branch } from '../services/branchesApi';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Search,
   Filter,
@@ -20,20 +22,38 @@ interface SalesProps {
 }
 
 export const Sales: React.FC<SalesProps> = ({ isDark, themeClasses }) => {
+  const { user } = useAuth();
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      branchesApi.getActiveBranches().then((data) => {
+        setBranches(data);
+        if (!selectedBranch && data.length > 0) {
+          setSelectedBranch(data[0].id);
+        }
+      });
+    } else if (user?.branch) {
+      setSelectedBranch(user.branch);
+    }
+  }, [user]);
 
   useEffect(() => {
     fetchSales();
-  }, []);
+  }, [selectedBranch]);
 
   const fetchSales = async () => {
     try {
       setLoading(true);
-      const response = await salesApi.getSales();
+      const params: any = {};
+      if (selectedBranch) params.branch = selectedBranch;
+      const response = await salesApi.getSales(params);
       // Handle both paginated and non-paginated responses
       const salesData = (response as any).data || (response as any).results || response;
       if (Array.isArray(salesData)) {
@@ -96,6 +116,18 @@ export const Sales: React.FC<SalesProps> = ({ isDark, themeClasses }) => {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            {/* Branch filter for admin */}
+            {user?.role === 'admin' && (
+              <select
+                value={selectedBranch || ''}
+                onChange={e => setSelectedBranch(Number(e.target.value))}
+                className={`px-4 py-2 ${themeClasses.input} border rounded-xl ${themeClasses.text} outline-none`}
+              >
+                {branches.map(branch => (
+                  <option key={branch.id} value={branch.id}>{branch.name}</option>
+                ))}
+              </select>
+            )}
             <button className={`${themeClasses.hover} px-4 py-2 rounded-xl border ${themeClasses.card} flex items-center gap-2`}>
               <Filter size={20} className={themeClasses.text} /> Filter
             </button>

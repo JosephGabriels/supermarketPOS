@@ -37,11 +37,12 @@ export interface User {
   last_name?: string;
   full_name?: string;
   role: 'admin' | 'manager' | 'cashier';
-  branch?: {
+  branch?: number;
+  branch_name?: string;
+  branch_details?: {
     id: number;
     name: string;
   };
-  branch_name?: string;
   phone?: string;
   employee_id?: string;
   is_active: boolean;

@@ -5,6 +5,7 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { CurrencyDisplay } from '../components/ui/CurrencyDisplay';
 import { useAuth } from '../contexts/AuthContext';
 import { productsApi, categoriesApi, type Product, type Category } from '../services/productsApi';
+import { branchesApi, type Branch } from '../services/branchesApi';
 import { suppliersApi, type Supplier } from '../services/suppliersApi';
 import type { TableColumn } from '../types';
 
@@ -19,6 +20,7 @@ export const Products: React.FC<ProductsProps> = ({ isDark, themeClasses }) => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
@@ -43,14 +45,20 @@ export const Products: React.FC<ProductsProps> = ({ isDark, themeClasses }) => {
     try {
       setIsLoading(true);
       setError(null);
-      const [productsRes, categoriesRes, suppliersRes] = await Promise.all([
-        productsApi.getProducts(),
+      let branchId = user?.branch || undefined;
+      if (user?.role === 'admin' && formData.branch) {
+        branchId = parseInt(formData.branch);
+      }
+      const [productsRes, categoriesRes, suppliersRes, branchesRes] = await Promise.all([
+        productsApi.getProducts(branchId ? { branch: branchId } : undefined),
         categoriesApi.getCategories(),
-        suppliersApi.getSuppliers()
+        suppliersApi.getSuppliers(),
+        user?.role === 'admin' ? branchesApi.getActiveBranches() : Promise.resolve([])
       ]);
       setProducts(productsRes || []);
       setCategories(categoriesRes || []);
       setSuppliers(suppliersRes || []);
+      setBranches(branchesRes || []);
     } catch (err) {
       console.error('Failed to fetch data:', err);
       setError('Failed to load products');
@@ -103,6 +111,10 @@ export const Products: React.FC<ProductsProps> = ({ isDark, themeClasses }) => {
     }
 
     try {
+      let branchId = user?.branch || 4;
+      if (user?.role === 'admin' && formData.branch) {
+        branchId = parseInt(formData.branch);
+      }
       const submitData = {
         name: formData.name,
         barcode: formData.barcode,
@@ -114,7 +126,7 @@ export const Products: React.FC<ProductsProps> = ({ isDark, themeClasses }) => {
         stock_quantity: parseInt(formData.stock_quantity),
         reorder_level: formData.reorder_level ? parseInt(formData.reorder_level) : 0,
         tax_rate: formData.tax_rate,
-        branch: user?.branch_id || 1
+        branch: branchId
       };
 
       if (modalMode === 'create') {
@@ -171,18 +183,19 @@ export const Products: React.FC<ProductsProps> = ({ isDark, themeClasses }) => {
   };
 
   const resetForm = () => {
-    setFormData({
-      name: '',
-      barcode: '',
-      category: '',
-      supplier: '',
-      description: '',
-      price: '',
-      cost_price: '',
-      stock_quantity: '',
-      reorder_level: '',
-      tax_rate: '16'
-    });
+      setFormData({
+        name: '',
+        barcode: '',
+        category: '',
+        supplier: '',
+        description: '',
+        price: '',
+        cost_price: '',
+        stock_quantity: '',
+        reorder_level: '',
+        tax_rate: '16',
+        branch: user?.role === 'admin' ? '' : String(user?.branch || '')
+      });
     setErrors({});
   };
 
@@ -369,6 +382,8 @@ export const Products: React.FC<ProductsProps> = ({ isDark, themeClasses }) => {
           isDark={isDark}
           emptyMessage={searchQuery || selectedCategory ? "No products found matching your criteria" : "No products found"}
           pageSize={20}
+          searchable={false}
+          filterable={false}
         />
       </div>
 
@@ -395,6 +410,24 @@ export const Products: React.FC<ProductsProps> = ({ isDark, themeClasses }) => {
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {user?.role === 'admin' && (
+                  <div>
+                    <label className={`block text-sm font-medium ${themeClasses.text} mb-2`}>
+                      Branch *
+                    </label>
+                    <select
+                      value={formData.branch || ''}
+                      onChange={e => setFormData(prev => ({ ...prev, branch: e.target.value }))}
+                      className={`w-full px-4 py-3 ${themeClasses.input} border rounded-xl ${themeClasses.text} focus:outline-none focus:ring-2 focus:ring-violet-500`}
+                      required
+                    >
+                      <option value="">Select branch</option>
+                      {branches.map(branch => (
+                        <option key={branch.id} value={branch.id}>{branch.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className={`block text-sm font-medium ${themeClasses.text} mb-2`}>
                     Product Name *

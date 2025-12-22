@@ -21,7 +21,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import usersApi, { type User, type UserFilters, type CreateUserData, type UpdateUserData, type Role } from '../services/usersApi';
+import { branchesApi, type Branch } from '../services/branchesApi';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { Button } from '../components/ui/Button';
 import CreateEditUserModal from '../components/modals/CreateEditUserModal';
 import DeleteUserModal from '../components/modals/DeleteUserModal';
 import ResetPasswordModal from '../components/modals/ResetPasswordModal';
@@ -39,6 +41,8 @@ const defaultRoles: Role[] = [
 
 export const Users: React.FC<UsersProps> = ({ isDark, themeClasses }) => {
   const { user: currentUser } = useAuth();
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<number | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,12 +70,22 @@ export const Users: React.FC<UsersProps> = ({ isDark, themeClasses }) => {
 
   useEffect(() => {
     loadUsers();
-  }, [pagination?.page, searchTerm, selectedRole, selectedStatus]);
+  }, [pagination?.page, searchTerm, selectedRole, selectedStatus, selectedBranch]);
 
   useEffect(() => {
     loadRoles();
     loadUserStats();
-  }, []);
+    if (currentUser?.role === 'admin') {
+      branchesApi.getActiveBranches().then((data) => {
+        setBranches(data);
+        if (!selectedBranch && data.length > 0) {
+          setSelectedBranch(data[0].id);
+        }
+      });
+    } else if (currentUser?.branch) {
+      setSelectedBranch(currentUser.branch);
+    }
+  }, [currentUser]);
 
   const loadUsers = async () => {
     try {
@@ -80,9 +94,9 @@ export const Users: React.FC<UsersProps> = ({ isDark, themeClasses }) => {
         search: searchTerm || undefined,
         role: selectedRole || undefined,
         is_active: selectedStatus === 'active' ? true : selectedStatus === 'inactive' ? false : undefined,
-        ordering: '-date_joined'
+        ordering: '-date_joined',
+        branch: selectedBranch || undefined
       };
-      
       const response = await usersApi.getUsers(filters);
       // Ensure data is always an array and pagination has defaults
       const usersData = Array.isArray(response.data) ? response.data : [];
@@ -148,7 +162,11 @@ export const Users: React.FC<UsersProps> = ({ isDark, themeClasses }) => {
 
   const handleCreateUser = async (data: CreateUserData) => {
     try {
-      await usersApi.createUser(data);
+      const submitData = {
+        ...data,
+        branch: currentUser?.role === 'admin' ? (data.branch ? data.branch : selectedBranch) : currentUser?.branch
+      };
+      await usersApi.createUser(submitData);
       setShowCreateModal(false);
       loadUsers();
       return { success: true };
@@ -162,9 +180,12 @@ export const Users: React.FC<UsersProps> = ({ isDark, themeClasses }) => {
 
   const handleUpdateUser = async (data: UpdateUserData) => {
     if (!selectedUser) return { success: false, error: 'No user selected' };
-    
     try {
-      await usersApi.updateUser(selectedUser.id, data);
+      const submitData = {
+        ...data,
+        branch: currentUser?.role === 'admin' ? (data.branch ? data.branch : selectedBranch) : currentUser?.branch
+      };
+      await usersApi.updateUser(selectedUser.id, submitData);
       setShowEditModal(false);
       setSelectedUser(null);
       loadUsers();
@@ -350,13 +371,9 @@ export const Users: React.FC<UsersProps> = ({ isDark, themeClasses }) => {
             </div>
           )}
           {canCreateUsers && (
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className={`flex items-center gap-2 ${themeClasses.button} text-white px-4 py-2 rounded-lg transition-colors`}
-            >
-              <UserPlus size={20} />
+            <Button onClick={() => setShowCreateModal(true)} icon={<UserPlus size={20} />}>
               Add User
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -415,7 +432,19 @@ export const Users: React.FC<UsersProps> = ({ isDark, themeClasses }) => {
       )}
 
       {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+                {/* Branch filter for admin */}
+                {currentUser?.role === 'admin' && (
+                  <select
+                    value={selectedBranch || ''}
+                    onChange={e => setSelectedBranch(Number(e.target.value))}
+                    className={`px-4 py-3 ${themeClasses.input} border rounded-lg ${themeClasses.text} outline-none focus:ring-2 focus:ring-violet-500`}
+                  >
+                    {branches.map(branch => (
+                      <option key={branch.id} value={branch.id}>{branch.name}</option>
+                    ))}
+                  </select>
+                )}
         <div className="relative">
           <Search className={`absolute left-3 top-3 ${themeClasses.textSecondary}`} size={20} />
           <input
@@ -449,13 +478,9 @@ export const Users: React.FC<UsersProps> = ({ isDark, themeClasses }) => {
           <option value="inactive">Inactive</option>
         </select>
 
-        <button
-          onClick={handleSearch}
-          className={`flex items-center justify-center gap-2 ${themeClasses.button} text-white px-4 py-3 rounded-lg transition-colors`}
-        >
-          <Filter size={20} />
+        <Button onClick={handleSearch} icon={<Filter size={20} />} className="px-4 py-3">
           Apply Filters
-        </button>
+        </Button>
       </div>
 
       {/* Error Message */}
@@ -677,6 +702,9 @@ export const Users: React.FC<UsersProps> = ({ isDark, themeClasses }) => {
         availableRoles={roles}
         themeClasses={themeClasses}
         isDark={isDark}
+        currentUser={currentUser}
+        branches={branches}
+        selectedBranch={selectedBranch}
       />
 
       <CreateEditUserModal
@@ -691,6 +719,9 @@ export const Users: React.FC<UsersProps> = ({ isDark, themeClasses }) => {
         availableRoles={roles}
         themeClasses={themeClasses}
         isDark={isDark}
+        currentUser={currentUser}
+        branches={branches}
+        selectedBranch={selectedBranch}
       />
 
       <DeleteUserModal

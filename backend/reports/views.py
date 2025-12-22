@@ -265,13 +265,16 @@ def dashboard_stats(request):
     
     data = {}
     
+    from customers.models import Customer
+    total_customers = Customer.objects.filter(is_active=True).count()
+
     if user.role == 'admin':
         # Admin sees global stats
         sales_month = Sale.objects.filter(created_at__date__gte=month_start, status='completed')
         total_revenue = sales_month.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
         total_orders = sales_month.count()
         active_users = User.objects.filter(is_active=True).count()
-        
+
         # Calculate changes (mock logic for now or compare with previous month)
         prev_month_start = (month_start - timedelta(days=1)).replace(day=1)
         prev_month_end = month_start - timedelta(days=1)
@@ -281,11 +284,11 @@ def dashboard_stats(request):
             status='completed'
         )
         prev_revenue = sales_prev_month.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
-        
+
         revenue_change = 0
         if prev_revenue > 0:
             revenue_change = ((total_revenue - prev_revenue) / prev_revenue) * 100
-            
+
         data = {
             'role': 'admin',
             'totalRevenue': str(total_revenue),
@@ -296,8 +299,9 @@ def dashboard_stats(request):
             'totalOrdersChange': '+0%', # Placeholder
             'conversionRate': 'N/A',
             'conversionRateChange': '0%',
+            'totalCustomers': total_customers,
         }
-        
+
     elif user.role == 'manager':
         # Manager sees branch stats
         branch = user.branch
@@ -309,7 +313,7 @@ def dashboard_stats(request):
         total_revenue = sales_month.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
         total_orders = sales_month.count()
         active_users = User.objects.filter(branch=branch, is_active=True).count()
-        
+
         data = {
             'role': 'manager',
             'branch': branch.name,
@@ -321,8 +325,9 @@ def dashboard_stats(request):
             'totalOrdersChange': '+0%',
             'conversionRate': 'N/A',
             'conversionRateChange': '0%',
+            'totalCustomers': total_customers,
         }
-        
+
     elif user.role == 'cashier':
         # Cashier sees own stats for today
         my_sales_today = Sale.objects.filter(
@@ -332,13 +337,13 @@ def dashboard_stats(request):
         )
         total_revenue = my_sales_today.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
         total_orders = my_sales_today.count()
-        
+
         # Shifts this month
         shifts_month = Shift.objects.filter(
             cashier=user,
             opening_time__date__gte=month_start
         ).count()
-        
+
         data = {
             'role': 'cashier',
             'totalRevenue': str(total_revenue), # Today's revenue
@@ -349,8 +354,9 @@ def dashboard_stats(request):
             'totalOrdersChange': 'Today',
             'conversionRate': 'N/A',
             'conversionRateChange': '0%',
+            'totalCustomers': total_customers,
         }
-    
+
     return Response(data)
 
 

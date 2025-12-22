@@ -9,10 +9,13 @@ import {
   Edit,
   Save,
   X,
-  ChevronRight
+  ChevronRight,
+  Lock
 } from 'lucide-react';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import usersApi from '../services/usersApi';
+import { auth } from '../services/httpClient';
+import { ChangePasswordModal } from '../components/modals/ChangePasswordModal';
 
 interface ProfileProps {
   isDark: boolean;
@@ -31,9 +34,16 @@ interface UserProfile {
   department: string;
 }
 
-export const Profile: React.FC<ProfileProps> = ({ isDark, themeClasses }) => {
+export const Profile: React.FC<ProfileProps> = ({ isDark, themeClasses: propThemeClasses }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+
+  const themeClasses = {
+    ...propThemeClasses,
+    hover: isDark ? 'hover:bg-gray-700/50' : 'hover:bg-gray-200',
+    button: isDark ? 'bg-violet-500 hover:bg-violet-600' : 'bg-violet-600 hover:bg-violet-700',
+  };
 
   // Mock user profile data
   const [profile, setProfile] = useState<UserProfile>({
@@ -63,11 +73,11 @@ export const Profile: React.FC<ProfileProps> = ({ isDark, themeClasses }) => {
           name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username,
           email: user.email,
           phone: user.phone || '',
-          location: user.branch?.name || '',
+          location: user.branch_details?.name || '',
           joinDate: user.date_joined || new Date().toISOString(),
           avatar: '',
           role: user.role || 'User',
-          department: user.branch?.name || ''
+          department: user.branch_details?.name || ''
         };
         setProfile(mapped);
         setEditForm(mapped);
@@ -104,11 +114,11 @@ export const Profile: React.FC<ProfileProps> = ({ isDark, themeClasses }) => {
         name: `${updated.first_name || ''} ${updated.last_name || ''}`.trim() || updated.username,
         email: updated.email,
         phone: updated.phone || '',
-        location: updated.branch?.name || '',
+        location: updated.branch_details?.name || '',
         joinDate: updated.date_joined || new Date().toISOString(),
         avatar: '',
         role: updated.role || 'User',
-        department: updated.branch?.name || ''
+        department: updated.branch_details?.name || ''
       };
       setProfile(mapped);
       setEditForm(mapped);
@@ -134,6 +144,18 @@ export const Profile: React.FC<ProfileProps> = ({ isDark, themeClasses }) => {
       ...prev,
       [field]: value
     }));
+  };
+
+  const handleChangePassword = async (data: { current_password: string; new_password: string; confirm_password: string }) => {
+    try {
+      await auth.changePassword(data);
+      setSaveMessage('Password changed successfully');
+      setTimeout(() => setSaveMessage(null), 3000);
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to change password:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to change password' };
+    }
   };
 
 
@@ -288,6 +310,42 @@ export const Profile: React.FC<ProfileProps> = ({ isDark, themeClasses }) => {
           </div>
         </div>
       </div>
+
+      {/* Account Security */}
+      <div className={`${themeClasses.card} border backdrop-blur-xl rounded-2xl p-6`}>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className={`text-xl font-bold ${themeClasses.text}`}>Account Security</h3>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between p-4 border border-gray-700/50 rounded-lg">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-violet-500/20 rounded-lg flex items-center justify-center">
+                <Lock className="text-violet-500" size={20} />
+              </div>
+              <div>
+                <p className={`font-medium ${themeClasses.text}`}>Password</p>
+                <p className={`${themeClasses.textSecondary} text-sm`}>Last changed recently</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowChangePasswordModal(true)}
+              className="px-4 py-2 bg-violet-500 text-white rounded-lg hover:bg-violet-600 transition-colors flex items-center gap-2"
+            >
+              Change Password
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={showChangePasswordModal}
+        onClose={() => setShowChangePasswordModal(false)}
+        onSubmit={handleChangePassword}
+        themeClasses={themeClasses}
+        isDark={isDark}
+      />
     </div>
   );
 };

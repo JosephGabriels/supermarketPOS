@@ -289,6 +289,8 @@ export const Suppliers: React.FC<SuppliersProps> = ({ isDark, themeClasses }) =>
           themeClasses={themeClasses}
           isDark={isDark}
           emptyMessage={searchQuery ? "No suppliers found matching your search" : "No suppliers found"}
+          searchable={false}
+          filterable={false}
         />
       </div>
 

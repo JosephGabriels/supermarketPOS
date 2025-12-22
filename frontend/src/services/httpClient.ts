@@ -29,7 +29,9 @@ export interface User {
   first_name?: string;
   last_name?: string;
   role: 'cashier' | 'manager' | 'admin';
-  branch?: {
+  branch?: number;
+  branch_name?: string;
+  branch_details?: {
     id: number;
     name: string;
   };
@@ -69,7 +71,10 @@ class HttpClient {
     console.log(`[httpClient] Method: ${options.method || 'GET'}`);
     console.log(`[httpClient] Token present: ${!!token}`, token ? `Token: ${token.substring(0, 20)}...` : 'NO TOKEN');
     
-    if (token) {
+    // Skip auth header for login endpoint to prevent sending invalid/expired tokens
+    const isLoginEndpoint = endpoint.includes('/auth/token/') && !endpoint.includes('/refresh/');
+
+    if (token && !isLoginEndpoint) {
       config.headers = {
         ...config.headers,
         'Authorization': `Bearer ${token}`,
@@ -89,6 +94,17 @@ class HttpClient {
       
       // Handle authentication errors
       if (response.status === 401) {
+        // If this is a login request, don't attempt refresh or redirect
+        if (isLoginEndpoint) {
+             console.log('[httpClient] 401 on login endpoint. Throwing error.');
+             const errorData = await response.json().catch(() => ({}));
+             const message = errorData.detail || 'Invalid credentials';
+             const apiErr = new ApiError(message);
+             apiErr.status = response.status;
+             apiErr.data = errorData;
+             throw apiErr;
+        }
+
         console.log('[httpClient] 401 Unauthorized, attempting token refresh...');
         // Try to refresh token
         const refreshToken = localStorage.getItem('refresh_token');
@@ -169,7 +185,11 @@ class HttpClient {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
-    window.location.href = '/login';
+    
+    // Only redirect if not already on login page to prevent refresh loops
+    if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+    }
   }
 
   private async refreshAccessToken(refreshToken: string): Promise<boolean> {
@@ -263,8 +283,18 @@ export const httpClient = new HttpClient(API_CONFIG.BASE_URL, API_CONFIG.TIMEOUT
 // Auth helper functions
 export const auth = {
   async login(username: string, password: string): Promise<{ access: string; refresh: string; user: User }> {
+    // Clear any existing tokens before login attempt to ensure a clean state
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user');
+
     const response = await httpClient.post('/auth/token/', { username, password });
     
+    if (!response.access || !response.refresh) {
+        console.error('[auth.login] Invalid response structure:', response);
+        throw new Error('Login failed: Invalid response from server');
+    }
+
     // Store tokens
     console.log('[auth.login] Login successful, storing tokens...');
     localStorage.setItem('access_token', response.access);
@@ -307,6 +337,10 @@ export const auth = {
 
   getToken(): string | null {
     return localStorage.getItem('access_token');
+  },
+
+  async changePassword(data: { current_password: string; new_password: string; confirm_password: string }): Promise<{ message: string }> {
+    return httpClient.post('/auth/change-password/', data);
   },
 };
 

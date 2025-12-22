@@ -296,6 +296,8 @@ export const Branches: React.FC<BranchesProps> = ({ isDark, themeClasses }) => {
           themeClasses={themeClasses}
           isDark={isDark}
           emptyMessage={searchQuery ? "No branches found matching your search" : "No branches found"}
+          searchable={false}
+          filterable={false}
         />
       </div>
 
