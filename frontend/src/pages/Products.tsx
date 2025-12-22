@@ -328,6 +328,8 @@ export const Products: React.FC<ProductsProps> = ({ isDark, themeClasses }) => {
     );
   }
 
+  const canManageProducts = user?.role === 'admin' || user?.role === 'manager';
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -339,12 +341,14 @@ export const Products: React.FC<ProductsProps> = ({ isDark, themeClasses }) => {
           <button className={`${themeClasses.hover} px-4 py-2 rounded-xl border ${themeClasses.card} flex items-center gap-2`}>
             <Download size={20} className={themeClasses.text} /> Export
           </button>
-          <button 
-            onClick={openCreateModal}
-            className="px-4 py-2 bg-gradient-to-r from-violet-500 to-pink-500 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-violet-500/25 transition-all flex items-center gap-2"
-          >
-            <Plus size={20} /> Add Product
-          </button>
+          {canManageProducts && (
+            <button 
+              onClick={openCreateModal}
+              className="px-4 py-2 bg-gradient-to-r from-violet-500 to-pink-500 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-violet-500/25 transition-all flex items-center gap-2"
+            >
+              <Plus size={20} /> Add Product
+            </button>
+          )}
         </div>
       </div>
 
@@ -377,7 +381,7 @@ export const Products: React.FC<ProductsProps> = ({ isDark, themeClasses }) => {
           data={filteredProducts}
           columns={columns}
           isLoading={isLoading}
-          actions={actions}
+          actions={canManageProducts ? actions : []}
           themeClasses={themeClasses}
           isDark={isDark}
           emptyMessage={searchQuery || selectedCategory ? "No products found matching your criteria" : "No products found"}

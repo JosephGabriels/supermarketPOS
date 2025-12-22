@@ -95,6 +95,7 @@ function AppContent() {
     if (user?.role === 'cashier') {
       return [
         ...baseItems, 
+        { icon: Package, label: 'Products', page: 'products' },
         { icon: ShoppingBag, label: 'Sales', page: 'sales' },
         { icon: FileText, label: 'Reports', page: 'reports' }
       ];

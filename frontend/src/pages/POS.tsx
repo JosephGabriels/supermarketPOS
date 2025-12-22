@@ -561,12 +561,19 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
     }
   };
 
-  const filteredProducts = searchQuery.trim() 
-    ? products.filter(product =>
-        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+  const filteredProducts = products.filter(product => {
+    const matchesSearch = searchQuery.trim() 
+      ? product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         product.barcode.includes(searchQuery)
-      )
-    : products;
+      : true;
+    
+    // Filter by branch if admin has selected one
+    const matchesBranch = user?.role === 'admin' && selectedBranch
+      ? product.branch === selectedBranch
+      : true;
+
+    return matchesSearch && matchesBranch;
+  });
 
   if (loading || shiftLoading) {
     return (

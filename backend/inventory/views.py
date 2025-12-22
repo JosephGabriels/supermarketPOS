@@ -2,7 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Q
+from django.db.models import Q, F
 from decimal import Decimal
 from .models import Product, StockMovement
 from .serializers import (ProductSerializer, ProductDetailSerializer, StockMovementSerializer, 
@@ -50,7 +50,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         if category:
             queryset = queryset.filter(category_id=category)
         if low_stock == 'true':
-            queryset = [p for p in queryset if p.is_low_stock]
+            queryset = queryset.filter(stock_quantity__lte=F('reorder_level'))
         return queryset.order_by('name')
     
     def perform_create(self, serializer):

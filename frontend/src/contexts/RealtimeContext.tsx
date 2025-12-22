@@ -149,20 +149,18 @@ export const useRealtime = () => {
 // Hook for live notifications
 export const useLiveNotifications = () => {
   const { subscribe } = useRealtime();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const fetchLowStockNotifications = useCallback(async () => {
     if (!isAuthenticated) return;
 
     try {
-      // Fetch all products to ensure we catch all low stock and out of stock items
-      // This matches the logic in Inventory.tsx to ensure consistency
-      const allProducts = await productsApi.getProducts();
-      
-      const relevantProducts = allProducts.filter(product => 
-        product.is_low_stock || product.stock_quantity === 0
-      );
+      // Fetch low stock products for the current branch
+      const relevantProducts = await productsApi.getProducts({
+        branch: user?.branch,
+        low_stock: true
+      });
       
       const stockNotifications: Notification[] = relevantProducts.map(product => ({
         id: -product.id, // Use negative ID for low stock to avoid collision and keep it stable
@@ -197,7 +195,7 @@ export const useLiveNotifications = () => {
     } catch (error) {
       console.error('Failed to fetch low stock notifications:', error);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user?.branch]);
 
   useEffect(() => {
     if (!isAuthenticated) return;

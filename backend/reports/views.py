@@ -18,7 +18,7 @@ from core.permissions import IsManager
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsManager])
 def daily_sales_report(request):
-    date_str = request.query_params.get('date', timezone.now().date().isoformat())
+    date_str = request.query_params.get('date', timezone.localtime(timezone.now()).date().isoformat())
     try:
         report_date = datetime.strptime(date_str, '%Y-%m-%d').date()
     except ValueError:
@@ -66,8 +66,8 @@ def daily_sales_report(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsManager])
 def cashier_performance(request):
-    date_from_str = request.query_params.get('date_from', (timezone.now().date() - timedelta(days=30)).isoformat())
-    date_to_str = request.query_params.get('date_to', timezone.now().date().isoformat())
+    date_from_str = request.query_params.get('date_from', (timezone.localtime(timezone.now()).date() - timedelta(days=30)).isoformat())
+    date_to_str = request.query_params.get('date_to', timezone.localtime(timezone.now()).date().isoformat())
     
     try:
         date_from = datetime.strptime(date_from_str, '%Y-%m-%d').date()
@@ -147,8 +147,8 @@ def stock_alerts(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsManager])
 def tax_report(request):
-    date_from_str = request.query_params.get('date_from', timezone.now().date().replace(day=1).isoformat())
-    date_to_str = request.query_params.get('date_to', timezone.now().date().isoformat())
+    date_from_str = request.query_params.get('date_from', timezone.localtime(timezone.now()).date().replace(day=1).isoformat())
+    date_to_str = request.query_params.get('date_to', timezone.localtime(timezone.now()).date().isoformat())
     
     try:
         date_from = datetime.strptime(date_from_str, '%Y-%m-%d').date()
@@ -197,7 +197,7 @@ def sales_summary(request):
     period = request.query_params.get('period', 'today')
     branch_id = request.user.branch_id if request.user.role != 'admin' else request.query_params.get('branch')
     
-    now = timezone.now()
+    now = timezone.localtime(timezone.now())
     
     if period == 'today':
         start_date = now.date()
@@ -259,7 +259,7 @@ def sales_summary(request):
 @permission_classes([IsAuthenticated])
 def dashboard_stats(request):
     user = request.user
-    now = timezone.now()
+    now = timezone.localtime(timezone.now())
     today = now.date()
     month_start = today.replace(day=1)
     
@@ -291,12 +291,12 @@ def dashboard_stats(request):
 
         data = {
             'role': 'admin',
-            'totalRevenue': str(total_revenue),
-            'totalRevenueChange': f"{revenue_change:+.1f}%",
+            'totalRevenue': f"{total_revenue:.2f}",
+            'totalRevenueChange': f"{revenue_change:+.1f}%" if revenue_change != 0 else "0%",
             'activeUsers': active_users,
-            'activeUsersChange': '+0%', # Placeholder
+            'activeUsersChange': '0%', # Placeholder
             'totalOrders': total_orders,
-            'totalOrdersChange': '+0%', # Placeholder
+            'totalOrdersChange': '0%', # Placeholder
             'conversionRate': 'N/A',
             'conversionRateChange': '0%',
             'totalCustomers': total_customers,
@@ -317,12 +317,12 @@ def dashboard_stats(request):
         data = {
             'role': 'manager',
             'branch': branch.name,
-            'totalRevenue': str(total_revenue),
-            'totalRevenueChange': '+0%', # Placeholder
+            'totalRevenue': f"{total_revenue:.2f}",
+            'totalRevenueChange': '0%', # Placeholder
             'activeUsers': active_users,
-            'activeUsersChange': '+0%',
+            'activeUsersChange': '0%',
             'totalOrders': total_orders,
-            'totalOrdersChange': '+0%',
+            'totalOrdersChange': '0%',
             'conversionRate': 'N/A',
             'conversionRateChange': '0%',
             'totalCustomers': total_customers,
@@ -346,7 +346,7 @@ def dashboard_stats(request):
 
         data = {
             'role': 'cashier',
-            'totalRevenue': str(total_revenue), # Today's revenue
+            'totalRevenue': f"{total_revenue:.2f}", # Today's revenue
             'totalRevenueChange': 'Today',
             'activeUsers': shifts_month, # Using this field for Shifts count
             'activeUsersChange': 'Shifts',
@@ -354,7 +354,7 @@ def dashboard_stats(request):
             'totalOrdersChange': 'Today',
             'conversionRate': 'N/A',
             'conversionRateChange': '0%',
-            'totalCustomers': total_customers,
+            'totalCustomers': shifts_month, # Mapping shifts count to totalCustomers field for frontend compatibility
         }
 
     return Response(data)
@@ -402,7 +402,7 @@ def revenue_chart_data(request):
     user = request.user
     
     # Last 6 months
-    today = timezone.now().date()
+    today = timezone.localtime(timezone.now()).date()
     months = []
     for i in range(5, -1, -1):
         d = today.replace(day=1) - timedelta(days=i*30)

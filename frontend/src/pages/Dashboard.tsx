@@ -59,14 +59,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDark, themeClasses }) =>
         setStats([
           {
             label: user?.role === 'cashier' ? 'My Sales Today' : 'Total Revenue',
-            value: dashboardStats.totalRevenue,
+            value: dashboardStats.totalRevenue.toString().startsWith('KES') ? dashboardStats.totalRevenue : `KES ${dashboardStats.totalRevenue}`,
             change: dashboardStats.totalRevenueChange,
             icon: DollarSign,
             up: !dashboardStats.totalRevenueChange.startsWith('-'),
             color: 'violet',
           },
           {
-            label: user?.role === 'cashier' ? 'My Shifts' : 'Total Customers',
+            label: user?.role === 'cashier' ? 'My Shifts (Month)' : 'Total Customers',
             value: dashboardStats.totalCustomers?.toString() ?? '0',
             change: '',
             icon: Users,
@@ -74,7 +74,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDark, themeClasses }) =>
             color: 'pink',
           },
           {
-            label: user?.role === 'cashier' ? 'My Transactions' : 'Total Sales',
+            label: user?.role === 'cashier' ? 'My Transactions Today' : 'Total Sales',
             value: dashboardStats.totalOrders.toString(),
             change: dashboardStats.totalOrdersChange,
             icon: ShoppingCart,
