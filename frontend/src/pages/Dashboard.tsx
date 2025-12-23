@@ -23,6 +23,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { dashboardApi } from '../services/dashboardApi';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { SaleLink } from '../components/ui/SaleLink';
 
 interface DashboardProps {
   isDark: boolean;
@@ -214,7 +215,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ isDark, themeClasses }) =>
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-pink-500 rounded-full"></div>
                 <div>
-                  <p className={`${themeClasses.text} font-medium`}>{activity.message}</p>
+                  <p className={`${themeClasses.text} font-medium`}>
+                    {activity.type === 'sale' ? (
+                      <>
+                        Sale <SaleLink saleId={activity.id} saleNumber={activity.message.replace('Sale ', '')} />
+                      </>
+                    ) : (
+                      activity.message
+                    )}
+                  </p>
                   <p className={`${themeClasses.textSecondary} text-sm`}>
                     {activity.type === 'sale' ? 'Sale completed' : 
                      activity.type === 'customer' ? 'Customer registered' :

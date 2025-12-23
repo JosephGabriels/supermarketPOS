@@ -1,10 +1,11 @@
 from django.urls import path
 from .views import (daily_sales_report, cashier_performance, stock_alerts, 
                     tax_report, sales_summary, dashboard_stats, recent_activity,
-                    revenue_chart_data, sales_channels_data)
+                    revenue_chart_data, sales_channels_data, cash_flow_report)
 
 urlpatterns = [
     path('daily-sales/', daily_sales_report, name='daily_sales_report'),
+    path('cash-flow/', cash_flow_report, name='cash_flow_report'),
     path('cashier-performance/', cashier_performance, name='cashier_performance'),
     path('stock-alerts/', stock_alerts, name='stock_alerts'),
     path('tax-report/', tax_report, name='tax_report'),

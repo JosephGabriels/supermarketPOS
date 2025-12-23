@@ -73,3 +73,22 @@ class SalesAPITest(TestCase):
 		self.assertEqual(movement.movement_type, 'sale')
 		self.assertEqual(movement.quantity, -2)
 
+	def test_sales_statistics(self):
+		# Create a sale today
+		sale = Sale.objects.create(
+			branch=self.branch,
+			cashier=self.user,
+			total_amount=200.00,
+			subtotal=200.00,
+			tax_amount=0.00,
+			discount_amount=0.00,
+			created_by=self.user
+		)
+		
+		response = self.client.get('/api/sales/statistics/')
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data['today']['count'], 1)
+		self.assertEqual(float(response.data['today']['total']), 200.00)
+		self.assertEqual(response.data['week']['count'], 1)
+		self.assertEqual(float(response.data['week']['total']), 200.00)
+

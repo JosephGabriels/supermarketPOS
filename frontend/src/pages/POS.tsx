@@ -1032,11 +1032,17 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
             </div>
             
             <div className="space-y-3 mb-4">
+              <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded-lg mb-2">
+                <p className={`${themeClasses.textSecondary} text-xs mb-1`}>Expected Cash in Drawer</p>
+                <p className={`${themeClasses.text} text-xl font-bold`}>
+                  <CurrencyDisplay amount={currentShift.expected_cash || currentShift.opening_cash} />
+                </p>
+              </div>
               <input
                 type="number"
                 step="0.01"
                 min="0"
-                defaultValue="0.00"
+                defaultValue={currentShift.expected_cash || currentShift.opening_cash}
                 id="closingCash"
                 placeholder="Closing cash amount"
                 className={`w-full ${themeClasses.input} border rounded-lg px-3 py-2 ${themeClasses.text} outline-none text-sm`}

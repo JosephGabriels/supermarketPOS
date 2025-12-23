@@ -68,6 +68,7 @@ export const ENDPOINTS = {
   // Reports
   REPORTS: {
     DAILY_SALES: '/reports/daily-sales/',
+    CASH_FLOW: '/reports/cash-flow/',
     CASHIER_PERFORMANCE: '/reports/cashier-performance/',
     STOCK_ALERTS: '/reports/stock-alerts/',
     TAX_REPORT: '/reports/tax-report/',

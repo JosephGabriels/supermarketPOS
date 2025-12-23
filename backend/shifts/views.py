@@ -129,7 +129,7 @@ class ShiftViewSet(viewsets.ModelViewSet):
         from payments.models import Payment
         from django.db.models import Sum, Count
         
-        sales = Sale.objects.filter(shift=shift)
+        sales = Sale.objects.filter(shift=shift, status='completed')
         sales_summary = sales.aggregate(
             total_sales=Count('id'),
             total_amount=Sum('total_amount'),
@@ -144,9 +144,30 @@ class ShiftViewSet(viewsets.ModelViewSet):
                 total=Sum('amount')
             )['total'] or Decimal('0.00')
             payment_summary[method] = total
+            
+        # Calculate expected cash dynamically
+        # Expected Cash = Opening Cash + Cash Payments - Change Given
+        # Change Given = Total Payments - Sale Total (where Total Payments > Sale Total)
+        
+        total_change = Decimal('0.00')
+        for sale in sales:
+            sale_payments = payments.filter(sale=sale)
+            sale_total_paid = sale_payments.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+            if sale_total_paid > sale.total_amount:
+                total_change += (sale_total_paid - sale.total_amount)
+        
+        # Update cash in payment summary to reflect net cash (after change)
+        if 'cash' in payment_summary:
+            payment_summary['cash'] -= total_change
+
+        cash_total = payment_summary.get('cash', Decimal('0.00'))
+        expected_cash = shift.opening_cash + cash_total
+        
+        shift_data = ShiftDetailSerializer(shift).data
+        shift_data['expected_cash'] = expected_cash
         
         report_data = {
-            'shift': ShiftDetailSerializer(shift).data,
+            'shift': shift_data,
             'sales_summary': sales_summary,
             'payment_summary': payment_summary,
             'cash_variance': shift.cash_difference if shift.cash_difference else Decimal('0.00')

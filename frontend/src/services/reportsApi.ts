@@ -68,6 +68,36 @@ export interface ReportFilters extends DateRange {
   branch_id?: number;
   category_id?: number;
   product_id?: number;
+  payment_method?: string;
+}
+
+export interface CashFlowStats {
+  period: {
+    start: string;
+    end: string;
+  };
+  summary: {
+    total_cash_in: number;
+    total_cash_out: number;
+    net_cash_flow: number;
+    cash_balance: number;
+  };
+  breakdown: {
+    cash: number;
+    card: number;
+    mpesa: number;
+    other: number;
+  };
+  transactions: Array<{
+    id: number;
+    date: string;
+    description: string;
+    amount: number;
+    type: 'in' | 'out';
+    method: string;
+    reference: string;
+    processed_by: string;
+  }>;
 }
 
 // Reports API service
@@ -197,6 +227,22 @@ export const reportsApi = {
       };
     } catch (error) {
       console.error('Error fetching business stats:', error);
+      throw error;
+    }
+  },
+
+  // Get cash flow report
+  getCashFlow: async (filters?: ReportFilters): Promise<CashFlowStats> => {
+    try {
+      const response = await httpClient.get(ENDPOINTS.REPORTS.CASH_FLOW, {
+        date_from: filters?.start_date,
+        date_to: filters?.end_date,
+        branch: filters?.branch_id,
+        payment_method: filters?.payment_method
+      });
+      return response as unknown as CashFlowStats;
+    } catch (error) {
+      console.error('Error fetching cash flow report:', error);
       throw error;
     }
   },

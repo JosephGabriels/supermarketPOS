@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
+from django.db.models import Sum, Count
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from decimal import Decimal
@@ -55,6 +56,68 @@ class SaleViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(created_at__lte=date_to)
         
         return queryset.select_related('cashier', 'branch', 'customer').prefetch_related('items').order_by('-created_at')
+
+    @action(detail=False, methods=['get'])
+    def statistics(self, request):
+        user = request.user
+        queryset = Sale.objects.all()
+        
+        if user.role == 'cashier':
+            queryset = queryset.filter(cashier=user)
+        elif user.role == 'manager' and user.branch:
+            queryset = queryset.filter(branch=user.branch)
+        elif user.role != 'admin' and user.branch:
+            queryset = queryset.filter(branch=user.branch)
+            
+        # Admin can filter by branch
+        branch_id = request.query_params.get('branch')
+        if user.role == 'admin' and branch_id:
+            queryset = queryset.filter(branch_id=branch_id)
+
+        today = timezone.localtime(timezone.now()).date()
+        start_of_week = today - timezone.timedelta(days=today.weekday())
+        
+        # Today's stats
+        today_stats = queryset.filter(created_at__date=today).aggregate(
+            count=Count('id'),
+            total=Sum('total_amount')
+        )
+        
+        # Week's stats
+        week_stats = queryset.filter(created_at__date__gte=start_of_week).aggregate(
+            count=Count('id'),
+            total=Sum('total_amount')
+        )
+        
+        response_data = {
+            'today': {
+                'count': today_stats['count'],
+                'total': today_stats['total'] or 0
+            },
+            'week': {
+                'count': week_stats['count'],
+                'total': week_stats['total'] or 0
+            }
+        }
+        
+        # Custom date stats
+        custom_date_str = request.query_params.get('date')
+        if custom_date_str:
+            try:
+                custom_date = timezone.datetime.strptime(custom_date_str, '%Y-%m-%d').date()
+                custom_stats = queryset.filter(created_at__date=custom_date).aggregate(
+                    count=Count('id'),
+                    total=Sum('total_amount')
+                )
+                response_data['custom'] = {
+                    'date': custom_date_str,
+                    'count': custom_stats['count'],
+                    'total': custom_stats['total'] or 0
+                }
+            except ValueError:
+                pass
+                
+        return Response(response_data)
     
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -65,16 +128,16 @@ class SaleViewSet(viewsets.ModelViewSet):
         data = serializer.validated_data
 
         # Temporarily disabled shift requirement due to frontend issues
-        # current_shift = Shift.objects.filter(
-        #     cashier=request.user,
-        #     status='open'
-        # ).first()
-        #
+        current_shift = Shift.objects.filter(
+            cashier=request.user,
+            status='open'
+        ).first()
+        
         # if not current_shift:
         #     return Response({'error': 'No open shift found. Please open a shift first.'},
         #                   status=status.HTTP_400_BAD_REQUEST)
 
-        current_shift = None
+        # current_shift = None
         
         customer = None
         if data.get('customer_id'):

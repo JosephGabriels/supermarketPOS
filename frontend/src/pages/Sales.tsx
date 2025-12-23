@@ -30,6 +30,25 @@ export const Sales: React.FC<SalesProps> = ({ isDark, themeClasses }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<number | null>(null);
+  const [stats, setStats] = useState<any>(null);
+  const [customDate, setCustomDate] = useState<string>('');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const saleId = params.get('saleId');
+    if (saleId) {
+      salesApi.getSale(Number(saleId))
+        .then(sale => {
+          setSelectedSale(sale);
+          // Clear the saleId from URL so it doesn't reopen on refresh if we don't want it to?
+          // Or keep it to allow sharing/refreshing. Keeping it is better.
+        })
+        .catch(err => {
+          console.error('Error fetching linked sale:', err);
+          setError('Failed to load linked sale');
+        });
+    }
+  }, []);
 
   useEffect(() => {
     if (user?.role === 'admin') {
@@ -46,7 +65,25 @@ export const Sales: React.FC<SalesProps> = ({ isDark, themeClasses }) => {
 
   useEffect(() => {
     fetchSales();
+    fetchStats();
   }, [selectedBranch]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [customDate]);
+
+  const fetchStats = async () => {
+    try {
+      const params: any = {};
+      if (selectedBranch) params.branch = selectedBranch;
+      if (customDate) params.date = customDate;
+      
+      const response = await salesApi.getStatistics(params);
+      setStats(response);
+    } catch (err) {
+      console.error('Error fetching stats:', err);
+    }
+  };
 
   const fetchSales = async () => {
     try {
@@ -81,6 +118,15 @@ export const Sales: React.FC<SalesProps> = ({ isDark, themeClasses }) => {
     return colors[status] || 'text-gray-500 bg-gray-500/10';
   };
 
+  const handleCloseModal = () => {
+    setSelectedSale(null);
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('saleId')) {
+      url.searchParams.delete('saleId');
+      window.history.pushState({}, '', url.toString());
+    }
+  };
+
   const filteredSales = sales.filter(sale => 
     sale.sale_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (sale.customer_details?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
@@ -100,6 +146,65 @@ export const Sales: React.FC<SalesProps> = ({ isDark, themeClasses }) => {
         <div>
           <h2 className={`text-3xl font-bold ${themeClasses.text} mb-2`}>Sales</h2>
           <p className={themeClasses.textSecondary}>View and manage sales transactions</p>
+        </div>
+      </div>
+
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className={`${themeClasses.card} p-6 rounded-2xl border border-gray-700/50 shadow-lg`}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-3 bg-emerald-500/10 rounded-xl">
+              <ShoppingCart className="text-emerald-500" size={24} />
+            </div>
+            <span className={`text-sm font-medium ${themeClasses.textSecondary}`}>Today</span>
+          </div>
+          <div className="space-y-1">
+            <h3 className={`text-2xl font-bold ${themeClasses.text}`}>
+              {stats?.today?.count || 0} Sales
+            </h3>
+            <p className={`text-sm ${themeClasses.textSecondary}`}>
+              <CurrencyDisplay amount={stats?.today?.total || 0} />
+            </p>
+          </div>
+        </div>
+
+        <div className={`${themeClasses.card} p-6 rounded-2xl border border-gray-700/50 shadow-lg`}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-3 bg-blue-500/10 rounded-xl">
+              <Calendar className="text-blue-500" size={24} />
+            </div>
+            <span className={`text-sm font-medium ${themeClasses.textSecondary}`}>This Week</span>
+          </div>
+          <div className="space-y-1">
+            <h3 className={`text-2xl font-bold ${themeClasses.text}`}>
+              {stats?.week?.count || 0} Sales
+            </h3>
+            <p className={`text-sm ${themeClasses.textSecondary}`}>
+              <CurrencyDisplay amount={stats?.week?.total || 0} />
+            </p>
+          </div>
+        </div>
+
+        <div className={`${themeClasses.card} p-6 rounded-2xl border border-gray-700/50 shadow-lg`}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-3 bg-violet-500/10 rounded-xl">
+              <Filter className="text-violet-500" size={24} />
+            </div>
+            <input
+                type="date"
+                value={customDate}
+                onChange={(e) => setCustomDate(e.target.value)}
+                className={`bg-transparent ${themeClasses.text} text-sm outline-none border-b border-gray-700 focus:border-violet-500 transition-colors`}
+            />
+          </div>
+          <div className="space-y-1">
+            <h3 className={`text-2xl font-bold ${themeClasses.text}`}>
+              {stats?.custom?.count || 0} Sales
+            </h3>
+            <p className={`text-sm ${themeClasses.textSecondary}`}>
+              <CurrencyDisplay amount={stats?.custom?.total || 0} />
+            </p>
+          </div>
         </div>
       </div>
 
@@ -200,7 +305,7 @@ export const Sales: React.FC<SalesProps> = ({ isDark, themeClasses }) => {
                 <p className={themeClasses.textSecondary}>{selectedSale.sale_number}</p>
               </div>
               <button 
-                onClick={() => setSelectedSale(null)}
+                onClick={handleCloseModal}
                 className={`p-2 rounded-lg ${themeClasses.hover}`}
               >
                 <X size={24} className={themeClasses.text} />

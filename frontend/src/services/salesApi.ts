@@ -138,6 +138,14 @@ export const salesApi = {
     return httpClient.get(ENDPOINTS.SALES, params);
   },
 
+  // Get sales statistics
+  getStatistics: (params?: {
+    branch?: number;
+    date?: string;
+  }) => {
+    return httpClient.get(`${ENDPOINTS.SALES}statistics/`, params);
+  },
+
   // Get single sale
   getSale: (id: number) => {
     return httpClient.get(`${ENDPOINTS.SALES}${id}/`);

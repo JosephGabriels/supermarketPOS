@@ -13,6 +13,8 @@ import {
   Truck,
   Building,
   ShoppingBag,
+  Clock,
+  Banknote,
 } from 'lucide-react';
 
 // Layout Components
@@ -35,6 +37,8 @@ import { Categories } from './pages/Categories';
 import { Suppliers } from './pages/Suppliers';
 import { Branches } from './pages/Branches';
 import UsersPage from './pages/Users';
+import { ShiftManagement } from './pages/ShiftManagement';
+import { Cash } from './pages/Cash';
 
 // Context Providers
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -80,6 +84,7 @@ function AppContent() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
+  const [currentSaleId, setCurrentSaleId] = useState<string | null>(null);
 
   // Use the live notifications hook
   const { notifications, markAsRead, markAllAsRead } = useLiveNotifications();
@@ -109,6 +114,8 @@ function AppContent() {
       { icon: Truck, label: 'Suppliers', page: 'suppliers' },
       { icon: Building, label: 'Branches', page: 'branches' },
       { icon: UsersIcon, label: 'Users', page: 'users' },
+      { icon: Clock, label: 'Shifts', page: 'shifts' },
+      { icon: Banknote, label: 'Cash', page: 'cash' },
       { icon: ShoppingBag, label: 'Sales', page: 'sales' },
       { icon: FileText, label: 'Reports', page: 'reports' },
       { icon: SettingsIcon, label: 'Settings', page: 'settings' },
@@ -137,7 +144,7 @@ function AppContent() {
 
   // Helper function to handle page navigation
   const handlePageChange = (page: string) => {
-    const validPages = ['dashboard', 'customers', 'pos', 'sales', 'products', 'categories', 'suppliers', 'branches', 'inventory', 'users', 'reports', 'settings', 'profile'];
+    const validPages = ['dashboard', 'customers', 'pos', 'sales', 'products', 'categories', 'suppliers', 'branches', 'inventory', 'users', 'shifts', 'reports', 'settings', 'profile', 'cash'];
     if (validPages.includes(page)) {
       setCurrentPage(page);
     }
@@ -168,8 +175,12 @@ function AppContent() {
         return <Inventory isDark={isDark} themeClasses={themeClasses} />;
       case 'users':
         return <UsersPage isDark={isDark} themeClasses={themeClasses} />;
+      case 'shifts':
+        return <ShiftManagement isDark={isDark} themeClasses={themeClasses} />;
       case 'reports':
         return <Reports isDark={isDark} themeClasses={themeClasses} />;
+      case 'cash':
+        return <Cash isDark={isDark} themeClasses={themeClasses} />;
       case 'settings':
         return <Settings isDark={isDark} setIsDark={setIsDark} themeClasses={themeClasses} />;
       case 'profile':
@@ -208,7 +219,7 @@ function AppContent() {
         const urlParams = new URLSearchParams(window.location.search);
         const pageFromUrl = urlParams.get('page');
         const savedPage = localStorage.getItem('pos_current_page');
-        const validPages = ['dashboard', 'customers', 'pos', 'sales', 'products', 'categories', 'suppliers', 'branches', 'inventory', 'users', 'reports', 'settings', 'profile'];
+        const validPages = ['dashboard', 'customers', 'pos', 'sales', 'products', 'categories', 'suppliers', 'branches', 'inventory', 'users', 'shifts', 'reports', 'settings', 'profile', 'cash'];
         
         // Priority: URL parameter > saved page > default
         if (pageFromUrl && validPages.includes(pageFromUrl)) {

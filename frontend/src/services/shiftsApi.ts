@@ -3,14 +3,10 @@ import { ENDPOINTS } from '../config/api';
 
 export interface Shift {
   id: number;
-  cashier: {
-    id: number;
-    username: string;
-  };
-  branch: {
-    id: number;
-    name: string;
-  };
+  cashier: number;
+  cashier_name: string;
+  branch: number;
+  branch_name: string;
   opening_time: string;
   closing_time?: string;
   opening_cash: string;

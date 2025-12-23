@@ -72,7 +72,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             reference_number=data.get('reference_number', ''),
             phone_number=data.get('phone_number', ''),
             notes=data.get('notes', ''),
-            status='completed' if data['payment_method'] in ['cash', 'card'] else 'pending',
+            status='completed',  # Manual payments are always considered completed
             processed_by=request.user
         )
         

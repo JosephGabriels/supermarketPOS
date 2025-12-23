@@ -17,6 +17,77 @@ from core.permissions import IsManager
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsManager])
+def cash_flow_report(request):
+    date_from_str = request.query_params.get('date_from', timezone.localtime(timezone.now()).date().isoformat())
+    date_to_str = request.query_params.get('date_to', timezone.localtime(timezone.now()).date().isoformat())
+    
+    try:
+        date_from = datetime.strptime(date_from_str, '%Y-%m-%d').date()
+        date_to = datetime.strptime(date_to_str, '%Y-%m-%d').date()
+    except ValueError:
+        return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+    
+    branch_id = request.user.branch_id if request.user.role != 'admin' else request.query_params.get('branch')
+    payment_method = request.query_params.get('payment_method')
+    
+    # Cash In (Payments)
+    payments = Payment.objects.filter(
+        processed_at__date__gte=date_from,
+        processed_at__date__lte=date_to,
+        status='completed'
+    )
+    
+    if branch_id:
+        payments = payments.filter(sale__branch_id=branch_id)
+        
+    if payment_method and payment_method != 'all':
+        payments = payments.filter(payment_method=payment_method)
+        
+    total_cash_in = payments.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    
+    # Breakdown by method
+    cash_in_breakdown = {
+        'cash': payments.filter(payment_method='cash').aggregate(total=Sum('amount'))['total'] or Decimal('0.00'),
+        'card': payments.filter(payment_method='card').aggregate(total=Sum('amount'))['total'] or Decimal('0.00'),
+        'mpesa': payments.filter(payment_method='mpesa').aggregate(total=Sum('amount'))['total'] or Decimal('0.00'),
+        'other': payments.exclude(payment_method__in=['cash', 'card', 'mpesa']).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    }
+    
+    # Cash Out (Expenses) - Placeholder for now as we don't have an Expense model
+    total_cash_out = Decimal('0.00')
+    
+    # Transactions List
+    transactions = []
+    for payment in payments.select_related('sale', 'processed_by').order_by('-processed_at'):
+        transactions.append({
+            'id': payment.id,
+            'date': payment.processed_at,
+            'description': f"Sale #{payment.sale.sale_number}",
+            'amount': payment.amount,
+            'type': 'in',
+            'method': payment.get_payment_method_display(),
+            'reference': payment.reference_number,
+            'processed_by': payment.processed_by.get_full_name() if payment.processed_by else 'System'
+        })
+        
+    return Response({
+        'period': {
+            'start': date_from,
+            'end': date_to
+        },
+        'summary': {
+            'total_cash_in': total_cash_in,
+            'total_cash_out': total_cash_out,
+            'net_cash_flow': total_cash_in - total_cash_out,
+            'cash_balance': total_cash_in - total_cash_out 
+        },
+        'breakdown': cash_in_breakdown,
+        'transactions': transactions
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsManager])
 def daily_sales_report(request):
     date_str = request.query_params.get('date', timezone.localtime(timezone.now()).date().isoformat())
     try:

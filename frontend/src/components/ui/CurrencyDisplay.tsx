@@ -23,7 +23,8 @@ export const CurrencyDisplay: React.FC<CurrencyDisplayProps> = ({
         setFormatted(showSymbol ? result : result.replace(/^[^\d]+/, '').trim());
       } catch (error) {
         // Fallback formatting
-        const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+        const val = amount === null || amount === undefined ? 0 : amount;
+        const num = typeof val === 'string' ? parseFloat(val) : val;
         const formattedNum = showCents
           ? num.toLocaleString('en-US', { minimumFractionDigits: 2 })
           : num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });

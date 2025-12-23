@@ -67,12 +67,45 @@ class ShiftDetailSerializer(serializers.ModelSerializer):
         from sales.models import Sale
         from django.db.models import Count, Sum
         
-        sales = Sale.objects.filter(shift=obj)
+        sales = Sale.objects.filter(shift=obj, status='completed')
         summary = sales.aggregate(
             total_sales=Count('id'),
             total_amount=Sum('total_amount')
         )
         return summary
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        
+        # Calculate expected cash dynamically for open shifts
+        if instance.status == 'open':
+            from payments.models import Payment
+            from sales.models import Sale
+            from django.db.models import Sum
+            from decimal import Decimal
+            
+            sales = Sale.objects.filter(shift=instance, status='completed')
+            payments = Payment.objects.filter(sale__shift=instance, status='completed')
+            
+            payment_summary = {}
+            for method in ['cash', 'mpesa', 'card', 'airtel_money', 'bank_transfer']:
+                total = payments.filter(payment_method=method).aggregate(
+                    total=Sum('amount')
+                )['total'] or Decimal('0.00')
+                payment_summary[method] = total
+            
+            total_change = Decimal('0.00')
+            for sale in sales:
+                sale_payments = payments.filter(sale=sale)
+                sale_total_paid = sale_payments.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+                if sale_total_paid > sale.total_amount:
+                    total_change += (sale_total_paid - sale.total_amount)
+            
+            cash_total = payment_summary.get('cash', Decimal('0.00'))
+            expected_cash = instance.opening_cash + cash_total - total_change
+            data['expected_cash'] = expected_cash
+            
+        return data
 
 
 class ShiftOpenSerializer(serializers.Serializer):
