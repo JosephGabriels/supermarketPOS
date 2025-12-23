@@ -257,38 +257,55 @@ export const Cash: React.FC<CashProps> = ({ isDark, themeClasses }) => {
                      </td>
                    </tr>
                 ) : (
-                  stats?.transactions.map((tx) => (
-                    <tr key={tx.id} className={themeClasses.hover}>
-                      <td className={`py-3 ${themeClasses.text}`}>
-                        {new Date(tx.date).toLocaleDateString()} <span className="text-xs text-gray-500">{new Date(tx.date).toLocaleTimeString()}</span>
-                      </td>
-                      <td className={`py-3 ${themeClasses.text}`}>
-                        <div className="flex items-center gap-2">
-                          {tx.type === 'in' ? (
-                            <ArrowDownLeft className="w-4 h-4 text-emerald-500" />
-                          ) : (
-                            <ArrowUpRight className="w-4 h-4 text-red-500" />
-                          )}
-                          {tx.description}
-                        </div>
-                      </td>
-                      <td className={`py-3 ${themeClasses.text}`}>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          tx.method === 'Cash' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                          tx.method === 'M-Pesa' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400' :
-                          'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                  stats?.transactions.map((tx) => {
+                    // If this transaction is linked to a sale, make it clickable
+                    const isSale = !!tx.sale_id;
+                    const handleClick = () => {
+                      if (isSale) {
+                        window.open(`/?page=sales&saleId=${tx.sale_id}`, '_blank');
+                      }
+                    };
+                    return (
+                      <tr
+                        key={tx.id}
+                        className={`${themeClasses.hover} ${isSale ? 'cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20' : ''}`}
+                        onClick={isSale ? handleClick : undefined}
+                        title={isSale ? 'View sale details' : ''}
+                      >
+                        <td className={`py-3 ${themeClasses.text}`}>
+                          {new Date(tx.date).toLocaleDateString()} <span className="text-xs text-gray-500">{new Date(tx.date).toLocaleTimeString()}</span>
+                        </td>
+                        <td className={`py-3 ${themeClasses.text}`}>
+                          <div className="flex items-center gap-2">
+                            {tx.type === 'in' ? (
+                              <ArrowDownLeft className="w-4 h-4 text-emerald-500" />
+                            ) : (
+                              <ArrowUpRight className="w-4 h-4 text-red-500" />
+                            )}
+                            {tx.description}
+                            {isSale && (
+                              <span className="ml-2 px-2 py-0.5 rounded bg-blue-100 text-blue-600 text-xs font-semibold">Sale</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className={`py-3 ${themeClasses.text}`}>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            tx.method === 'Cash' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                            tx.method === 'M-Pesa' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400' :
+                            'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                          }`}>
+                            {tx.method}
+                          </span>
+                        </td>
+                        <td className={`py-3 ${themeClasses.textSecondary} text-sm`}>{tx.reference || '-'}</td>
+                        <td className={`py-3 text-right font-medium ${
+                          tx.type === 'in' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
                         }`}>
-                          {tx.method}
-                        </span>
-                      </td>
-                      <td className={`py-3 ${themeClasses.textSecondary} text-sm`}>{tx.reference || '-'}</td>
-                      <td className={`py-3 text-right font-medium ${
-                        tx.type === 'in' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
-                      }`}>
-                        {tx.type === 'in' ? '+' : '-'}<CurrencyDisplay amount={tx.amount} />
-                      </td>
-                    </tr>
-                  ))
+                          {tx.type === 'in' ? '+' : '-'}<CurrencyDisplay amount={tx.amount} />
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

@@ -58,6 +58,7 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
   const [products, setProducts] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
+    const [currentSaleId, setCurrentSaleId] = useState<number | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -367,25 +368,34 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
       return;
     }
 
+    let saleId = currentSaleId;
+    let sale;
     try {
       setProcessing(true);
       setError(null);
 
-      const saleData = {
-        customer_id: selectedCustomer?.id,
-        items: cart.map(item => ({
-          product_id: item.product.id,
-          quantity: item.quantity,
-          unit_price: item.unitPrice.toString(),
-          discount: item.discount.toString()
-        })),
-        discount_amount: discountAmount.toString(),
-        points_discount: pointsDiscount.toString(),
-        discount_code: appliedDiscount?.code || '',
-        notes: `Loyalty points redeemed: ${pointsToRedeem}`
-      };
-
-      const sale = await salesApi.createSale(saleData);
+      // If we don't have a pending sale, create one
+      if (!saleId) {
+        const saleData = {
+          customer_id: selectedCustomer?.id,
+          items: cart.map(item => ({
+            product_id: item.product.id,
+            quantity: item.quantity,
+            unit_price: item.unitPrice.toString(),
+            discount: item.discount.toString()
+          })),
+          discount_amount: discountAmount.toString(),
+          points_discount: pointsDiscount.toString(),
+          discount_code: appliedDiscount?.code || '',
+          notes: `Loyalty points redeemed: ${pointsToRedeem}`
+        };
+        sale = await salesApi.createSale(saleData);
+        saleId = sale.id;
+        setCurrentSaleId(saleId);
+      } else {
+        // Fetch the sale if we already have a pending one
+        sale = await salesApi.getSale(saleId);
+      }
 
       // create payments and surface any payment errors
       for (const payment of payments) {
@@ -393,7 +403,7 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
           await paymentsApi.createPayment({
             sale_id: sale.id,
             payment_method: payment.method as 'cash' | 'mpesa' | 'airtel_money' | 'card' | 'bank_transfer',
-            amount: payment.amount.toString(),
+            amount: payment.amount.toFixed(2),
           });
         } catch (err: any) {
           console.error('Payment creation failed:', err);
@@ -476,7 +486,7 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
         pointsDiscount,
       });
 
-      setShowReceipt(true);
+      // setShowReceipt(true);
 
       // Attempt to auto-print: try server-side print first, otherwise open print dialog with returned HTML
       (async () => {
@@ -599,17 +609,6 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
           </select>
         </div>
       )}
-      {user?.role === 'cashier' && (
-        <div className="mb-4 max-w-xs">
-          <label className="block text-sm font-medium mb-2">Branch</label>
-          <input
-            type="text"
-            value={branches.find(b => b.id === user.branch)?.name || user.branch}
-            className="w-full px-4 py-3 border rounded-xl bg-gray-100 text-gray-500"
-            disabled
-          />
-        </div>
-      )}
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
@@ -643,7 +642,7 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
       )}
 
       {/* Main Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* LEFT: SCANNER & PRODUCTS (3 cols on desktop) */}
         <div className="lg:col-span-3 space-y-4 flex flex-col">
           {/* BARCODE SCANNER - PRIMARY INPUT */}
@@ -745,23 +744,23 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
           )}
         </div>
 
-        {/* RIGHT: CART & PAYMENT (1 col on desktop) */}
-        <div className="lg:col-span-1 flex flex-col gap-4">
+        {/* RIGHT: CART & PAYMENT (2 cols on desktop) */}
+        <div className="lg:col-span-2 flex flex-col gap-4">
           {/* TOTAL DISPLAY - PROMINENT FOR CUSTOMER */}
-          <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-5 text-white shadow-xl order-first lg:order-none">
-            <p className="text-xs font-semibold opacity-90 mb-1">TOTAL</p>
-            <div className="text-4xl font-black mb-3">
+          <div className={`${themeClasses.card} border rounded-xl p-5 shadow-xl order-first lg:order-none`}>
+            <p className={`${themeClasses.textSecondary} text-xs font-semibold mb-1`}>TOTAL</p>
+            <div className="text-emerald-500 dark:text-emerald-400 text-6xl font-black mb-3">
               <CurrencyDisplay amount={total} />
             </div>
             
             {cart.length > 0 && (
-              <div className="space-y-1 text-xs opacity-90 text-sm">
+              <div className={`space-y-1 text-sm ${themeClasses.textSecondary}`}>
                 <div className="flex justify-between">
                   <span>Subtotal:</span>
                   <CurrencyDisplay amount={subtotal} />
                 </div>
                 {discountAmount > 0 && (
-                  <div className="flex justify-between text-green-200">
+                  <div className="flex justify-between text-green-500">
                     <span>-Discount:</span>
                     <CurrencyDisplay amount={discountAmount} />
                   </div>
@@ -776,19 +775,19 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
             )}
 
             {totalPaid > 0 && (
-              <div className="mt-3 pt-3 border-t border-white/30 text-sm font-bold">
+              <div className={`mt-3 pt-3 border-t border-gray-700/30 text-sm font-bold ${themeClasses.text}`}>
                 <div className="flex justify-between">
                   <span>Paid:</span>
                   <CurrencyDisplay amount={totalPaid} />
                 </div>
                 {change > 0 && (
-                  <div className="flex justify-between text-green-200">
+                  <div className="flex justify-between text-green-500">
                     <span>Change:</span>
                     <CurrencyDisplay amount={change} />
                   </div>
                 )}
                 {totalPaid < total && (
-                  <div className="text-red-200 mt-2">
+                  <div className="text-red-500 mt-2">
                     Need: <CurrencyDisplay amount={total - totalPaid} />
                   </div>
                 )}

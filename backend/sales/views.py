@@ -17,6 +17,9 @@ from core.permissions import IsCashier, IsManager
 import subprocess
 import shutil
 from django.utils.html import escape
+import io
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import mm
 try:
     from num2words import num2words
 except Exception:
@@ -65,11 +68,12 @@ class SaleViewSet(viewsets.ModelViewSet):
         if user.role == 'cashier':
             queryset = queryset.filter(cashier=user)
         elif user.role == 'manager' and user.branch:
+            # Managers see all sales for their branch
             queryset = queryset.filter(branch=user.branch)
         elif user.role != 'admin' and user.branch:
+            # Other roles (if any) fallback to branch
             queryset = queryset.filter(branch=user.branch)
-            
-        # Admin can filter by branch
+        # Admin can filter by branch, but if not provided, see all sales
         branch_id = request.query_params.get('branch')
         if user.role == 'admin' and branch_id:
             queryset = queryset.filter(branch_id=branch_id)
@@ -146,9 +150,41 @@ class SaleViewSet(viewsets.ModelViewSet):
             except Customer.DoesNotExist:
                 return Response({'error': 'Customer not found'}, status=status.HTTP_404_NOT_FOUND)
         
+        # Validate all items before creating the sale
+        validated_items = []
+        for item_data in data['items']:
+            product = None
+            unit_price = item_data.get('unit_price')
+            if item_data.get('product_id'):
+                try:
+                    product = Product.objects.get(id=item_data['product_id'])
+                    if not unit_price:
+                        unit_price = product.price
+                except Product.DoesNotExist:
+                    return Response({'error': f'Product {item_data["product_id"]} not found'}, 
+                                    status=status.HTTP_404_NOT_FOUND)
+            elif item_data.get('barcode'):
+                try:
+                    product = Product.objects.get(barcode=item_data['barcode'], branch=request.user.branch)
+                    if not unit_price:
+                        unit_price = product.price
+                except Product.DoesNotExist:
+                    return Response({'error': f'Product with barcode {item_data["barcode"]} not found'}, 
+                                    status=status.HTTP_404_NOT_FOUND)
+            if not product and not item_data.get('is_ad_hoc'):
+                return Response({'error': 'Product is required for non-ad-hoc items'}, 
+                                status=status.HTTP_400_BAD_REQUEST)
+            validated_items.append({
+                'product': product,
+                'unit_price': unit_price,
+                'quantity': item_data['quantity'],
+                'discount': item_data.get('discount', Decimal('0.00')),
+                'is_ad_hoc': item_data.get('is_ad_hoc', False),
+                'ad_hoc_name': item_data.get('ad_hoc_name', '')
+            })
+
         subtotal = Decimal('0.00')
         tax_amount = Decimal('0.00')
-        
         sale = Sale.objects.create(
             branch=request.user.branch,
             cashier=request.user,
@@ -161,56 +197,22 @@ class SaleViewSet(viewsets.ModelViewSet):
             notes=data.get('notes', ''),
             created_by=request.user
         )
-        
-        for item_data in data['items']:
-            product = None
-            unit_price = item_data.get('unit_price')
-            
-            if item_data.get('product_id'):
-                try:
-                    product = Product.objects.get(id=item_data['product_id'])
-                    if not unit_price:
-                        unit_price = product.price
-                except Product.DoesNotExist:
-                    sale.delete()
-                    return Response({'error': f'Product {item_data["product_id"]} not found'}, 
-                                  status=status.HTTP_404_NOT_FOUND)
-            elif item_data.get('barcode'):
-                try:
-                    product = Product.objects.get(barcode=item_data['barcode'], branch=request.user.branch)
-                    if not unit_price:
-                        unit_price = product.price
-                except Product.DoesNotExist:
-                    sale.delete()
-                    return Response({'error': f'Product with barcode {item_data["barcode"]} not found'}, 
-                                  status=status.HTTP_404_NOT_FOUND)
-            
-            if not product and not item_data.get('is_ad_hoc'):
-                sale.delete()
-                return Response({'error': 'Product is required for non-ad-hoc items'}, 
-                              status=status.HTTP_400_BAD_REQUEST)
-            
-            quantity = item_data['quantity']
-            discount = item_data.get('discount', Decimal('0.00'))
-            
+        for item in validated_items:
             tax_rate = Decimal('16.00')  # Prices are tax-inclusive
-            item_subtotal = (unit_price * quantity) - discount
-            # Calculate tax from tax-inclusive price: Tax = Price * (Rate / (100 + Rate))
+            item_subtotal = (item['unit_price'] * item['quantity']) - item['discount']
             item_tax = item_subtotal * (tax_rate / (Decimal('100.00') + tax_rate))
-            
-            sale_item = SaleItem.objects.create(
+            SaleItem.objects.create(
                 sale=sale,
-                product=product,
-                quantity=quantity,
-                unit_price=unit_price,
-                discount=discount,
+                product=item['product'],
+                quantity=item['quantity'],
+                unit_price=item['unit_price'],
+                discount=item['discount'],
                 subtotal=item_subtotal,
                 tax_rate=tax_rate,
                 tax_amount=item_tax,
-                is_ad_hoc=item_data.get('is_ad_hoc', False),
-                ad_hoc_name=item_data.get('ad_hoc_name', '')
+                is_ad_hoc=item['is_ad_hoc'],
+                ad_hoc_name=item['ad_hoc_name']
             )
-            
             subtotal += item_subtotal
             tax_amount += item_tax
         
@@ -260,11 +262,6 @@ class SaleViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def print_receipt(self, request, pk=None):
-        """Generate a printable receipt for the sale. If `direct=true` is provided
-        the server will attempt to send the receipt to the system's default printer
-        using `lp` or `lpr`. If printing is not available, the HTML will be returned
-        so the frontend can open the print dialog.
-        """
         sale = self.get_object()
 
         # Ensure KRA eTIMS simulation exists for printing compliance
@@ -273,20 +270,6 @@ class SaleViewSet(viewsets.ModelViewSet):
                 sale.simulate_etims()
             except Exception:
                 pass
-
-        # Build a simple HTML receipt
-        def row(label, value):
-            return f"<div style='display:flex;justify-content:space-between'><strong>{escape(label)}</strong><span>{escape(str(value))}</span></div>"
-
-        items_html = ""
-        for it in sale.items.all():
-            name = escape(it.ad_hoc_name or (it.product.name if it.product else 'Item'))
-            items_html += f"<div style='display:flex;justify-content:space-between'><span>{name} x{it.quantity}</span><span>{it.subtotal}</span></div>"
-
-        # include QR image if available (render slim using mm relative to receipt width)
-        qr_img_html = ''
-        if getattr(sale, 'etims_qr_image', None):
-            qr_img_html = f"<div style='text-align:center;margin:6px 0'><img src='{escape(sale.etims_qr_image)}' style='width:60mm;max-width:100%;height:auto;display:block;margin:0 auto' /></div>"
 
         # Helper to read store metadata from SystemConfig (admin editable)
         def get_config(key, default=''):
@@ -304,6 +287,122 @@ class SaleViewSet(viewsets.ModelViewSet):
         store_tax_id = get_config('STORE_TAX_ID', sale.branch.tax_id if sale.branch and getattr(sale.branch, 'tax_id', None) else '')
         store_website = get_config('STORE_WEBSITE', '')
         store_tagline = get_config('STORE_TAGLINE', '')
+
+        direct = request.query_params.get('direct', 'false').lower() == 'true' or request.data.get('direct', False)
+
+        if direct:
+            try:
+                # Generate PDF for direct printing
+                buffer = io.BytesIO()
+                p_width = 80 * mm
+                p_height = 297 * mm # A4 height, printer should cut
+                c = canvas.Canvas(buffer, pagesize=(p_width, p_height))
+                
+                # Margins and positioning
+                y = p_height - 5 * mm
+                left_margin = 2 * mm
+                right_margin = p_width - 2 * mm
+                line_height = 4 * mm
+                
+                def draw_text_center(text, y_pos, font="Courier-Bold", size=10):
+                    c.setFont(font, size)
+                    w = c.stringWidth(text, font, size)
+                    c.drawString((p_width - w) / 2, y_pos, text)
+                    return y_pos - line_height
+
+                def draw_row(left, right, y_pos, font="Courier", size=9):
+                    c.setFont(font, size)
+                    c.drawString(left_margin, y_pos, str(left))
+                    if right:
+                        r_str = str(right)
+                        w = c.stringWidth(r_str, font, size)
+                        c.drawString(right_margin - w, y_pos, r_str)
+                    return y_pos - line_height
+
+                def draw_separator(y_pos):
+                    c.setDash(1, 2)
+                    c.line(left_margin, y_pos + 2*mm, right_margin, y_pos + 2*mm)
+                    c.setDash([])
+                    return y_pos - 2*mm
+
+                # Header
+                y = draw_text_center(store_name, y, size=12)
+                if store_branch: y = draw_text_center(store_branch, y, "Courier", 9)
+                if store_address: y = draw_text_center(store_address, y, "Courier", 9)
+                if store_phone: y = draw_text_center(store_phone, y, "Courier", 9)
+                
+                y = draw_separator(y)
+                
+                y = draw_row(f"Rcpt: {sale.sale_number}", "", y)
+                y = draw_row((sale.created_at or sale.updated_at).strftime('%Y-%m-%d %H:%M'), "", y)
+                
+                y = draw_separator(y)
+                
+                # Items
+                c.setFont("Courier-Bold", 9)
+                c.drawString(left_margin, y, "Item")
+                c.drawString(left_margin + 45*mm, y, "Qty")
+                c.drawString(right_margin - 15*mm, y, "Total")
+                y -= line_height
+                
+                c.setFont("Courier", 9)
+                for item in sale.items.all():
+                    name = (item.ad_hoc_name or (item.product.name if item.product else 'Item'))[:22]
+                    qty = str(item.quantity)
+                    total = str(item.subtotal)
+                    
+                    c.drawString(left_margin, y, name)
+                    c.drawString(left_margin + 45*mm, y, qty)
+                    w = c.stringWidth(total, "Courier", 9)
+                    c.drawString(right_margin - w, y, total)
+                    y -= line_height
+                
+                y = draw_separator(y)
+                
+                # Totals
+                y = draw_row("Subtotal", sale.subtotal, y)
+                if sale.discount_amount > 0:
+                    y = draw_row("Discount", f"-{sale.discount_amount}", y)
+                
+                y -= 2*mm
+                y = draw_row("TOTAL", sale.total_amount, y, "Courier-Bold", 12)
+                y -= 2*mm
+                
+                # Footer
+                user = sale.created_by.get_full_name() if sale.created_by else 'Cashier'
+                y = draw_text_center(f"Served by: {user}", y, "Courier", 8)
+                y = draw_text_center("Thank You!", y, "Courier-Bold", 10)
+                
+                c.showPage()
+                c.save()
+                
+                pdf_bytes = buffer.getvalue()
+                
+                # Print
+                lp = shutil.which('lp') or shutil.which('lpr')
+                if lp:
+                    p = subprocess.Popen([lp], stdin=subprocess.PIPE)
+                    p.communicate(input=pdf_bytes)
+                    if p.returncode == 0:
+                        return Response({'printed': True})
+            except Exception as e:
+                print(f"PDF Print Error: {e}")
+                # Fallback to HTML
+                pass
+
+        # Build a simple HTML receipt
+        def row(label, value):
+            return f"<div style='display:flex;justify-content:space-between'><strong>{escape(label)}</strong><span>{escape(str(value))}</span></div>"
+
+        items_html = ""
+        for it in sale.items.all():
+            name = escape(it.ad_hoc_name or (it.product.name if it.product else 'Item'))
+            items_html += f"<div style='display:flex;justify-content:space-between'><span>{name} x{it.quantity}</span><span>{it.subtotal}</span></div>"
+
+        # include QR image if available (render slim using mm relative to receipt width)
+        qr_img_html = ''
+        if getattr(sale, 'etims_qr_image', None):
+            qr_img_html = f"<div style='text-align:center;margin:6px 0'><img src='{escape(sale.etims_qr_image)}' style='width:60mm;max-width:100%;height:auto;display:block;margin:0 auto' /></div>"
 
         # amount in words (KES)
         def amount_in_words(amount):
@@ -488,21 +587,6 @@ class SaleViewSet(viewsets.ModelViewSet):
         </body>
         </html>
         """
-
-        direct = request.query_params.get('direct', 'false').lower() == 'true' or request.data.get('direct', False)
-
-        if direct:
-            # Try server-side printing via lp or lpr
-            lp = shutil.which('lp') or shutil.which('lpr')
-            if lp:
-                try:
-                    p = subprocess.Popen([lp], stdin=subprocess.PIPE)
-                    p.communicate(input=html.encode('utf-8'))
-                    if p.returncode == 0:
-                        return Response({'printed': True})
-                except Exception as e:
-                    # Fall through to returning HTML
-                    pass
 
         # Return HTML for client-side printing
         return Response({'html': html})

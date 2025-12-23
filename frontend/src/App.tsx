@@ -101,8 +101,7 @@ function AppContent() {
       return [
         ...baseItems, 
         { icon: Package, label: 'Products', page: 'products' },
-        { icon: ShoppingBag, label: 'Sales', page: 'sales' },
-        { icon: FileText, label: 'Reports', page: 'reports' }
+        { icon: ShoppingBag, label: 'Sales', page: 'sales' }
       ];
     }
 
@@ -152,6 +151,19 @@ function AppContent() {
 
   // Handle page rendering
   const renderPage = () => {
+    // Role-based page access
+    const cashierAllowed = [
+      'dashboard', 'customers', 'pos', 'sales', 'products', 'profile'
+    ];
+    if (user?.role === 'cashier' && !cashierAllowed.includes(currentPage)) {
+      setCurrentPage('dashboard');
+      return <Dashboard isDark={isDark} themeClasses={themeClasses} />;
+    }
+    // Managers cannot access settings
+    if (user?.role === 'manager' && currentPage === 'settings') {
+      setCurrentPage('dashboard');
+      return <Dashboard isDark={isDark} themeClasses={themeClasses} />;
+    }
     switch (currentPage) {
       case 'dashboard':
         return <Dashboard isDark={isDark} themeClasses={themeClasses} />;
