@@ -20,6 +20,9 @@ from django.utils.html import escape
 import io
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
+from reportlab.platypus import Paragraph
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.enums import TA_LEFT
 try:
     from num2words import num2words
 except Exception:
@@ -262,6 +265,7 @@ class SaleViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def print_receipt(self, request, pk=None):
+        from django.http import FileResponse
         sale = self.get_object()
 
         # Ensure KRA eTIMS simulation exists for printing compliance
@@ -288,308 +292,188 @@ class SaleViewSet(viewsets.ModelViewSet):
         store_website = get_config('STORE_WEBSITE', '')
         store_tagline = get_config('STORE_TAGLINE', '')
 
-        direct = request.query_params.get('direct', 'false').lower() == 'true' or request.data.get('direct', False)
+        # Generate PDF with all receipt details
+        def generate_receipt_pdf():
+            buffer = io.BytesIO()
+            p_width = 80 * mm
+            p_height = 297 * mm
+            c = canvas.Canvas(buffer, pagesize=(p_width, p_height))
+            y = p_height - 5 * mm
+            left_margin = 2 * mm
+            right_margin = p_width - 2 * mm
+            line_height = 4 * mm
+            
+            def wrap_text(text, max_width, font="Courier", size=8):
+                """Wrap text to fit within max_width in mm"""
+                c.setFont(font, size)
+                max_width_pts = max_width / mm * 2.834645669  # Convert mm to points
+                words = str(text).split()
+                lines = []
+                current_line = ""
+                
+                for word in words:
+                    test_line = (current_line + " " + word).strip()
+                    if c.stringWidth(test_line, font, size) <= max_width_pts:
+                        current_line = test_line
+                    else:
+                        if current_line:
+                            lines.append(current_line)
+                        current_line = word
+                
+                if current_line:
+                    lines.append(current_line)
+                return lines
+            
+            def draw_text_center(text, y_pos, font="Courier-Bold", size=10):
+                c.setFont(font, size)
+                w = c.stringWidth(text, font, size)
+                c.drawString((p_width - w) / 2, y_pos, text)
+                return y_pos - line_height
 
-        if direct:
-            try:
-                # Generate PDF for direct printing
-                buffer = io.BytesIO()
-                p_width = 80 * mm
-                p_height = 297 * mm # A4 height, printer should cut
-                c = canvas.Canvas(buffer, pagesize=(p_width, p_height))
-                
-                # Margins and positioning
-                y = p_height - 5 * mm
-                left_margin = 2 * mm
-                right_margin = p_width - 2 * mm
-                line_height = 4 * mm
-                
-                def draw_text_center(text, y_pos, font="Courier-Bold", size=10):
-                    c.setFont(font, size)
-                    w = c.stringWidth(text, font, size)
-                    c.drawString((p_width - w) / 2, y_pos, text)
-                    return y_pos - line_height
+            def draw_row(left, right, y_pos, font="Courier", size=9):
+                c.setFont(font, size)
+                c.drawString(left_margin, y_pos, str(left))
+                if right:
+                    r_str = str(right)
+                    w = c.stringWidth(r_str, font, size)
+                    c.drawString(right_margin - w, y_pos, r_str)
+                return y_pos - line_height
 
-                def draw_row(left, right, y_pos, font="Courier", size=9):
-                    c.setFont(font, size)
-                    c.drawString(left_margin, y_pos, str(left))
-                    if right:
-                        r_str = str(right)
-                        w = c.stringWidth(r_str, font, size)
-                        c.drawString(right_margin - w, y_pos, r_str)
-                    return y_pos - line_height
+            def draw_separator(y_pos):
+                c.setDash(1, 2)
+                c.line(left_margin, y_pos + 2*mm, right_margin, y_pos + 2*mm)
+                c.setDash([])
+                return y_pos - 2*mm
 
-                def draw_separator(y_pos):
-                    c.setDash(1, 2)
-                    c.line(left_margin, y_pos + 2*mm, right_margin, y_pos + 2*mm)
-                    c.setDash([])
-                    return y_pos - 2*mm
-
-                # Header
-                y = draw_text_center(store_name, y, size=12)
-                if store_branch: y = draw_text_center(store_branch, y, "Courier", 9)
-                if store_address: y = draw_text_center(store_address, y, "Courier", 9)
-                if store_phone: y = draw_text_center(store_phone, y, "Courier", 9)
+            y = draw_text_center(store_name, y, size=12)
+            if store_branch: y = draw_text_center(store_branch, y, "Courier", 9)
+            if store_address: y = draw_text_center(store_address, y, "Courier", 9)
+            if store_phone: y = draw_text_center(store_phone, y, "Courier", 9)
+            if store_email: y = draw_text_center(store_email, y, "Courier", 9)
+            y = draw_separator(y)
+            
+            y = draw_row(f"POS: 94", (sale.created_at or sale.updated_at).strftime('%d/%m/%Y %H:%M'), y, "Courier", 9)
+            y = draw_row(f"Receipt: {sale.sale_number}", "", y, "Courier", 9)
+            if store_tax_id:
+                y = draw_row(f"Tax ID: {store_tax_id}", "", y, "Courier", 8)
+            y = draw_separator(y)
+            
+            c.setFont("Courier-Bold", 9)
+            c.drawString(left_margin, y, "DESCRIPTION")
+            c.drawString(left_margin + 50*mm, y, "QTY")
+            c.drawString(right_margin - 30*mm, y, "PRICE")
+            c.drawString(right_margin - 15*mm, y, "EXT")
+            y -= line_height
+            
+            c.setFont("Courier", 8)
+            for item in sale.items.all():
+                desc_text = item.ad_hoc_name or (item.product.name if item.product else 'Item')
+                qty = str(item.quantity)
+                price = str(getattr(item, 'unit_price', '0.00'))
+                ext = str(getattr(item, 'subtotal', '0.00'))
                 
-                y = draw_separator(y)
+                desc_lines = wrap_text(desc_text, 48*mm, "Courier", 8)
                 
-                y = draw_row(f"Rcpt: {sale.sale_number}", "", y)
-                y = draw_row((sale.created_at or sale.updated_at).strftime('%Y-%m-%d %H:%M'), "", y)
-                
-                y = draw_separator(y)
-                
-                # Items
-                c.setFont("Courier-Bold", 9)
-                c.drawString(left_margin, y, "Item")
-                c.drawString(left_margin + 45*mm, y, "Qty")
-                c.drawString(right_margin - 15*mm, y, "Total")
-                y -= line_height
-                
-                c.setFont("Courier", 9)
-                for item in sale.items.all():
-                    name = (item.ad_hoc_name or (item.product.name if item.product else 'Item'))[:22]
-                    qty = str(item.quantity)
-                    total = str(item.subtotal)
-                    
-                    c.drawString(left_margin, y, name)
-                    c.drawString(left_margin + 45*mm, y, qty)
-                    w = c.stringWidth(total, "Courier", 9)
-                    c.drawString(right_margin - w, y, total)
+                for i, line in enumerate(desc_lines):
+                    c.drawString(left_margin, y, line)
+                    if i == 0:
+                        c.drawString(left_margin + 50*mm, y, qty)
+                        pw = c.stringWidth(price, "Courier", 8)
+                        c.drawString(right_margin - 30*mm - pw, y, price)
+                        ew = c.stringWidth(ext, "Courier", 8)
+                        c.drawString(right_margin - ew, y, ext)
                     y -= line_height
-                
-                y = draw_separator(y)
-                
-                # Totals
-                y = draw_row("Subtotal", sale.subtotal, y)
-                if sale.discount_amount > 0:
-                    y = draw_row("Discount", f"-{sale.discount_amount}", y)
-                
-                y -= 2*mm
-                y = draw_row("TOTAL", sale.total_amount, y, "Courier-Bold", 12)
-                y -= 2*mm
-                
-                # Footer
-                user = sale.created_by.get_full_name() if sale.created_by else 'Cashier'
-                y = draw_text_center(f"Served by: {user}", y, "Courier", 8)
-                y = draw_text_center("Thank You!", y, "Courier-Bold", 10)
-                
-                c.showPage()
-                c.save()
-                
-                pdf_bytes = buffer.getvalue()
-                
-                # Print
-                lp = shutil.which('lp') or shutil.which('lpr')
-                if lp:
-                    p = subprocess.Popen([lp], stdin=subprocess.PIPE)
-                    p.communicate(input=pdf_bytes)
-                    if p.returncode == 0:
-                        return Response({'printed': True})
-            except Exception as e:
-                print(f"PDF Print Error: {e}")
-                # Fallback to HTML
-                pass
-
-        # Build a simple HTML receipt
-        def row(label, value):
-            return f"<div style='display:flex;justify-content:space-between'><strong>{escape(label)}</strong><span>{escape(str(value))}</span></div>"
-
-        items_html = ""
-        for it in sale.items.all():
-            name = escape(it.ad_hoc_name or (it.product.name if it.product else 'Item'))
-            items_html += f"<div style='display:flex;justify-content:space-between'><span>{name} x{it.quantity}</span><span>{it.subtotal}</span></div>"
-
-        # include QR image if available (render slim using mm relative to receipt width)
-        qr_img_html = ''
-        if getattr(sale, 'etims_qr_image', None):
-            qr_img_html = f"<div style='text-align:center;margin:6px 0'><img src='{escape(sale.etims_qr_image)}' style='width:60mm;max-width:100%;height:auto;display:block;margin:0 auto' /></div>"
-
-        # amount in words (KES)
-        def amount_in_words(amount):
-            try:
-                whole = int(amount)
-            except Exception:
-                return str(amount)
-            if num2words:
+            
+            y = draw_separator(y)
+            
+            def fmt(val):
                 try:
-                    words = num2words(whole, to='cardinal').upper()
-                    return f"{words} SHILLINGS ONLY"
-                except Exception:
-                    pass
-            return f"{whole} KES"
-
-        # build detailed receipt HTML (narrow thermal width ~70mm)
-        # prepare item rows including CODE (barcode), DESCRIPTION, QTY, PRICE, EXT
-        item_rows = ''
-        for it in sale.items.all():
-            code = escape(it.product.barcode) if it.product else ''
-            desc = escape((it.ad_hoc_name or (it.product.name if it.product else 'Item'))[:30])
-            qty = escape(str(it.quantity))
-            price = escape(str(getattr(it, 'unit_price', '0.00')))
-            ext = escape(str(getattr(it, 'subtotal', '0.00')))
-            # format: code left, description center (wrap), qty price ext right-aligned
-            item_rows += f"<div style='display:flex;justify-content:space-between;gap:4px;font-size:11px'><div style='width:55px'>{code}</div><div style='flex:1;text-align:left'>{desc}</div><div style='width:28px;text-align:center'>{qty}</div><div style='width:55px;text-align:right'>{price}</div><div style='width:55px;text-align:right'>{ext}</div></div>"
-
-        payments_total = sum([p.amount for p in sale.payments.all()]) if sale.payments.exists() else sale.total_amount
-        change_amount = payments_total - sale.total_amount if sale.payments.exists() else Decimal('0.00')
-
-        # VAT (assume 16% for receipt display). If prices are tax-inclusive, VAT component = total * 16/116
-        try:
-            vat_rate = Decimal('16.00')
-            vat_amount = (sale.total_amount * vat_rate) / (Decimal('100.00') + vat_rate)
-            vat_amount = vat_amount.quantize(Decimal('0.01'))
-            vatable_amount = (sale.total_amount - vat_amount).quantize(Decimal('0.01'))
-        except Exception:
-            vat_amount = Decimal('0.00')
-            vatable_amount = Decimal('0.00')
-
-        def fmt(val):
+                    return f"{Decimal(val).quantize(Decimal('0.01')):,.2f}"
+                except:
+                    return str(val)
+            
+            y = draw_row("Subtotal", fmt(sale.subtotal), y)
+            if sale.discount_amount > 0:
+                y = draw_row("Discount", f"-{fmt(sale.discount_amount)}", y)
+            
+            y -= 1*mm
+            y = draw_row("TOTAL", fmt(sale.total_amount), y, "Courier-Bold", 11)
+            y -= 1*mm
+            
+            payments_total = sum([p.amount for p in sale.payments.all()]) if sale.payments.exists() else sale.total_amount
+            change_amount = payments_total - sale.total_amount if sale.payments.exists() else Decimal('0.00')
+            
+            if sale.payments.exists():
+                y = draw_row("Tendered", fmt(payments_total), y, "Courier", 9)
+                if change_amount > 0:
+                    y = draw_row("Change", fmt(change_amount), y, "Courier", 9)
+            
+            y = draw_separator(y)
+            
+            def amount_in_words(amount):
+                try:
+                    whole = int(amount)
+                except:
+                    return str(amount)
+                if num2words:
+                    try:
+                        words = num2words(whole, to='cardinal').upper()
+                        return f"{words} SHILLINGS ONLY"
+                    except:
+                        pass
+                return f"{whole} KES"
+            
+            y = draw_text_center(amount_in_words(sale.total_amount), y, "Courier-Bold", 9)
+            
             try:
-                return f"{Decimal(val).quantize(Decimal('0.01')):,.2f}"
+                vat_rate = Decimal('16.00')
+                vat_amount = (sale.total_amount * vat_rate) / (Decimal('100.00') + vat_rate)
+                vat_amount = vat_amount.quantize(Decimal('0.01'))
+                vatable_amount = (sale.total_amount - vat_amount).quantize(Decimal('0.01'))
+            except:
+                vat_amount = Decimal('0.00')
+                vatable_amount = Decimal('0.00')
+            
+            y -= 2*mm
+            c.setFont("Courier-Bold", 8)
+            c.drawString(left_margin, y, "TAX DETAILS")
+            y -= line_height
+            c.setFont("Courier", 8)
+            y = draw_row("VATABLE", fmt(vatable_amount), y, "Courier", 8)
+            y = draw_row("VAT AMT", fmt(vat_amount), y, "Courier", 8)
+            
+            y = draw_separator(y)
+            
+            if sale.rcpt_signature:
+                y -= 2*mm
+                c.setFont("Courier-Bold", 8)
+                c.drawString(left_margin, y, "KRA eTIMS")
+                y -= line_height
+                c.setFont("Courier", 7)
+                sig_text = str(sale.rcpt_signature)[:40]
+                c.drawString(left_margin, y, sig_text)
+            
+            y -= 3*mm
+            c.setFont("Courier", 8)
+            served_by = sale.created_by.get_full_name() if sale.created_by else (sale.cashier.get_full_name() if sale.cashier else 'N/A')
+            y = draw_text_center(f"Served by: {served_by}", y, "Courier", 8)
+            y = draw_text_center("Thank you for your purchase!", y, "Courier-Bold", 9)
+            
+            c.showPage()
+            c.save()
+            return buffer.getvalue()
+
+        pdf_bytes = generate_receipt_pdf()
+        
+        lp = shutil.which('lp') or shutil.which('lpr')
+        if lp:
+            try:
+                p = subprocess.Popen([lp], stdin=subprocess.PIPE)
+                p.communicate(input=pdf_bytes)
             except Exception:
-                return str(val)
-
-        html = f"""
-        <html>
-        <head>
-            <meta charset='utf-8'>
-            <meta name='viewport' content='width=device-width, initial-scale=1'>
-            <title>Receipt {escape(sale.sale_number)}</title>
-            <style>
-                @page {{ size: 80mm auto; margin:0; padding:0; }}
-                * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-                html {{ width: 80mm; }}
-                body {{ font-family: monospace; font-size:11px; line-height:1.2; margin:0; padding:4px; width:80mm; }}
-                .receipt {{ width:80mm; margin:0 auto; }}
-                .header {{ text-align:center; margin-bottom:8px; }}
-                .header-main {{ font-size:12px; font-weight:700; margin-bottom:2px; }}
-                .header-sub {{ font-size:10px; margin:1px 0; }}
-                .section {{ margin-bottom:6px; }}
-                .section-title {{ font-weight:700; font-size:10px; margin-bottom:3px; border-bottom:1px dashed #000; padding-bottom:2px; }}
-                .items-header {{ display:flex; font-weight:700; font-size:10px; margin-bottom:2px; padding-bottom:2px; border-bottom:1px solid #000; }}
-                .item-row {{ display:flex; font-size:10px; margin:1px 0; }}
-                .col-code {{ width:50px; flex-shrink:0; }}
-                .col-desc {{ flex:1; margin:0 4px; word-break:break-word; }}
-                .col-qty {{ width:30px; text-align:center; flex-shrink:0; }}
-                .col-price {{ width:50px; text-align:right; flex-shrink:0; }}
-                .col-ext {{ width:60px; text-align:right; flex-shrink:0; }}
-                .totals-row {{ display:flex; justify-content:space-between; margin:2px 0; font-size:10px; }}
-                .totals-label {{ font-weight:700; }}
-                .totals-value {{ text-align:right; }}
-                .total-final {{ display:flex; justify-content:space-between; font-weight:700; font-size:11px; margin:4px 0; padding:2px 0; border-top:1px solid #000; border-bottom:1px solid #000; }}
-                .hr {{ border: none; border-top:1px dashed #000; margin:4px 0; height:1px; }}
-                .payment-section {{ display:flex; justify-content:space-between; margin:2px 0; font-size:10px; }}
-                .amount-words {{ font-weight:700; font-size:11px; margin:4px 0; text-align:center; }}
-                .center {{ text-align:center; }}
-                .small {{ font-size:10px; }}
-                .qr-container {{ text-align:center; margin:8px 0; }}
-                .qr-img {{ width:60mm; max-width:100%; height:auto; display:block; margin:0 auto; }}
-                .footer {{ text-align:center; font-size:9px; margin-top:6px; }}
-                .footer-line {{ margin:2px 0; }}
-                .muted {{ color:#666; }}
-                @media print {{ * {{ margin: 0; padding: 0; }} html {{ width: 80mm; }} body {{ width: 80mm; margin: 0; padding: 4px; }} .receipt {{ width: 80mm; }} }}
-            </style>
-        </head>
-        <body>
-        <div class='receipt'>
-            <!-- HEADER -->
-            <div class='header'>
-                <div class='header-main'>{escape(store_name)}</div>
-                {f"<div class='header-sub'>{escape(store_branch)}</div>" if store_branch else ''}
-                {f"<div class='header-sub'>{escape(store_address)}</div>" if store_address else ''}
-                {f"<div class='header-sub'>{escape(store_phone)}</div>" if store_phone else ''}
-                {f"<div class='header-sub'>{escape(store_email)}</div>" if store_email else ''}
-                {f"<div class='header-sub' style='font-style:italic;font-size:9px'>{escape(store_tagline)}</div>" if store_tagline else ''}
-                <div class='hr'></div>
-                <div class='header-sub'>POS: {escape(str(sale.id))}</div>
-                <div class='header-sub'>{escape((sale.created_at or sale.updated_at).strftime('%d/%m/%Y %H:%M:%S'))}</div>
-                <div class='header-sub'>Receipt #: {escape(sale.sale_number)}</div>
-                {f"<div class='header-sub' style='font-size:9px'>Tax ID: {escape(store_tax_id)}</div>" if store_tax_id else ''}
-            </div>
-
-            <!-- ITEMS SECTION -->
-            <div class='section'>
-                <div class='items-header'>
-                    <div class='col-code'>CODE</div>
-                    <div class='col-desc'>DESCRIPTION</div>
-                    <div class='col-qty'>QTY</div>
-                    <div class='col-price'>PRICE</div>
-                    <div class='col-ext'>EXT</div>
-                </div>
-                {item_rows}
-            </div>
-
-            <div class='hr'></div>
-
-            <!-- TOTALS SECTION -->
-            <div class='section'>
-                {row('Subtotal', fmt(sale.subtotal))}
-                {row('Discount', fmt(sale.discount_amount))}
-                <div class='total-final'>
-                    <div>TOTAL</div>
-                    <div>{fmt(sale.total_amount)}</div>
-                </div>
-            </div>
-
-            <!-- PAYMENT SECTION -->
-            <div class='section'>
-                <div class='payment-section'>
-                    <div>Tendered</div>
-                    <div>{fmt(payments_total)}</div>
-                </div>
-                <div class='payment-section'>
-                    <div>Change</div>
-                    <div>{fmt(change_amount)}</div>
-                </div>
-            </div>
-
-            <div class='amount-words'>{escape(amount_in_words(sale.total_amount))}</div>
-
-            <!-- TAX DETAILS SECTION -->
-            <div class='section'>
-                <div class='section-title'>TAX DETAILS</div>
-                <div style='display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px'>
-                    <div style='flex:1'>CODE</div>
-                    <div style='flex:1;text-align:right'>VATABLE</div>
-                    <div style='flex:1;text-align:right'>VAT</div>
-                </div>
-                <div style='display:flex;justify-content:space-between;font-size:10px'>
-                    <div style='flex:1'>V</div>
-                    <div style='flex:1;text-align:right'>{fmt(vatable_amount)}</div>
-                    <div style='flex:1;text-align:right'>{fmt(vat_amount)}</div>
-                </div>
-            </div>
-
-            <div class='hr'></div>
-
-            <!-- KRA ETIMS SECTION -->
-            <div class='section'>
-                <div class='section-title'>KRA eTIMS</div>
-                <div class='small' style='word-break:break-all;margin-bottom:4px'>
-                    <strong>Signature:</strong>
-                    <div style='font-size:9px;word-break:break-all'>{escape(sale.rcpt_signature or '')}</div>
-                </div>
-            </div>
-
-            <!-- QR CODE SECTION (AT BOTTOM) -->
-            <div class='qr-container'>
-                {qr_img_html}
-            </div>
-
-            <!-- FOOTER SECTION -->
-            <div class='footer'>
-                <div class='footer-line'>Served by: {escape(sale.created_by.get_full_name() if sale.created_by else (sale.cashier.get_full_name() if sale.cashier else 'N/A'))}</div>
-                <div class='footer-line muted'>CU Serial: KRA{escape(sale.sale_number)}</div>
-                {f"<div class='footer-line muted' style='font-size:8px'>{escape(store_website)}</div>" if store_website else ''}
-                <div class='footer-line' style='margin-top:4px'>Thank you for your purchase!</div>
-            </div>
-        </div>
-        </body>
-        </html>
-        """
-
-        # Return HTML for client-side printing
-        return Response({'html': html})
+                pass
+        
+        return Response({'printed': True, 'message': 'Receipt sent to printer'})
 
 
 class DiscountViewSet(viewsets.ModelViewSet):

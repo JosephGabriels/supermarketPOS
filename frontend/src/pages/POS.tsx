@@ -51,6 +51,78 @@ interface DiscountCode {
   valid: boolean;
 }
 
+interface LastSale {
+  id: number;
+  sale_number?: string;
+  subtotal: string;
+  tax_amount?: string;
+  total_amount: string;
+  items?: Array<{
+    product_barcode?: string;
+    product?: number;
+    product_name?: string;
+    quantity: number;
+    unit_price: string;
+    subtotal: string;
+  }>;
+  etims_qr_image?: string;
+  rcpt_signature?: string;
+  cashier_name?: string;
+  payments: Payment[];
+  change: number;
+  discountAmount: number;
+  pointsDiscount: number;
+  created_at?: string;
+}
+
+const numberToWords = (num: number): string => {
+  const ones = ['', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
+  const teens = ['TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN'];
+  const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
+  const scales = ['', 'THOUSAND', 'MILLION', 'BILLION'];
+
+  if (num === 0) return 'ZERO';
+
+  const parts: string[] = [];
+  let scaleIndex = 0;
+
+  while (num > 0) {
+    const chunk = num % 1000;
+    if (chunk > 0) {
+      let chunkWords = '';
+      const hundreds = Math.floor(chunk / 100);
+      const remainder = chunk % 100;
+      const tensPlace = Math.floor(remainder / 10);
+      const onesPlace = remainder % 10;
+
+      if (hundreds > 0) {
+        chunkWords += ones[hundreds] + ' HUNDRED ';
+      }
+
+      if (remainder >= 20) {
+        chunkWords += tens[tensPlace];
+        if (onesPlace > 0) {
+          chunkWords += ' ' + ones[onesPlace];
+        }
+      } else if (remainder >= 10) {
+        chunkWords += teens[remainder - 10];
+      } else if (onesPlace > 0) {
+        chunkWords += ones[onesPlace];
+      }
+
+      if (scaleIndex > 0) {
+        chunkWords += ' ' + scales[scaleIndex];
+      }
+
+      parts.unshift(chunkWords.trim());
+    }
+    num = Math.floor(num / 1000);
+    scaleIndex++;
+  }
+
+  return parts.join(' ').trim();
+};
+
 export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
   const { user } = useAuth();
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -70,13 +142,14 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
   const [appliedDiscount, setAppliedDiscount] = useState<DiscountCode | null>(null);
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
-  const [showReceipt, setShowReceipt] = useState(false);
   const [lastSale, setLastSale] = useState<any>(null);
   const [currentShift, setCurrentShift] = useState<any>(null);
   const [shiftLoading, setShiftLoading] = useState(true);
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [showCloseShiftModal, setShowCloseShiftModal] = useState(false);
   const [scanSuccess, setScanSuccess] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [searchingCustomer, setSearchingCustomer] = useState(false);
 
   // Load products and customers
   useEffect(() => {
@@ -325,6 +398,45 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
     setDiscountCode('');
   };
 
+  const normalizePhoneNumber = (phone: string): string => {
+    const cleaned = phone.replace(/\D/g, '');
+    
+    if (cleaned.length === 9) {
+      return `+254${cleaned}`;
+    }
+    
+    if (cleaned.length === 12 && cleaned.startsWith('254')) {
+      return `+${cleaned}`;
+    }
+    
+    if (cleaned.length === 13 && phone.startsWith('+')) {
+      return phone;
+    }
+    
+    return phone;
+  };
+
+  const searchCustomerByPhone = async (phone: string) => {
+    if (!phone.trim()) {
+      setSelectedCustomer(null);
+      return;
+    }
+
+    try {
+      setSearchingCustomer(true);
+      setError(null);
+      const normalizedPhone = normalizePhoneNumber(phone);
+      const customer = await customersApi.lookupByPhone(normalizedPhone);
+      setSelectedCustomer(customer);
+    } catch (err) {
+      setError('Customer not found with that phone number');
+      setSelectedCustomer(null);
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setSearchingCustomer(false);
+    }
+  };
+
   const addPayment = (method: 'cash' | 'mpesa' | 'card', amount?: number) => {
     if (method === 'cash' && amount) {
       const existingPayment = payments.find(p => p.method === 'cash');
@@ -478,73 +590,21 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
         console.warn('Failed to fetch completed sale details, falling back to create response', err);
       }
 
+      const currentBranch = branches.find(b => b.id === (selectedBranch || user?.branch));
+      
       setLastSale({
         ...finalSale,
         payments,
         change,
         discountAmount,
         pointsDiscount,
+        branch: currentBranch,
+        cashierName: user?.first_name || user?.username || 'Unknown',
       });
 
-      // setShowReceipt(true);
-
-      // Attempt to auto-print: try server-side print first, otherwise open print dialog with returned HTML
-      (async () => {
-        try {
-          const printRes: any = await salesApi.printReceipt(sale.id, { direct: true });
-          if (printRes && printRes.printed) {
-            // Printed on server
-            // small confirmation (non-blocking)
-            console.info('Receipt printed on server');
-          } else if (printRes && printRes.html) {
-            // Print using a hidden iframe in-page to avoid opening new windows
-            try {
-              const html = printRes.html;
-              const iframe = document.createElement('iframe');
-              iframe.style.position = 'fixed';
-              iframe.style.right = '0';
-              iframe.style.top = '0';
-              iframe.style.width = '0';
-              iframe.style.height = '0';
-              iframe.style.border = '0';
-              iframe.style.visibility = 'hidden';
-              document.body.appendChild(iframe);
-
-              const doc = iframe.contentWindow?.document;
-              if (doc) {
-                doc.open();
-                doc.write(html);
-                doc.close();
-                iframe.contentWindow?.focus();
-                // Wait longer for styles to be parsed and applied before printing
-                setTimeout(() => {
-                  try {
-                    iframe.contentWindow?.print();
-                  } catch (e) {
-                    console.warn('Print failed in iframe', e);
-                  }
-                  setTimeout(() => {
-                    try { document.body.removeChild(iframe); } catch(e) { /* ignore */ }
-                  }, 500);
-                }, 800);
-              } else {
-                // Fallback to opening a window if iframe isn't available
-                const w = window.open('', '_blank', 'width=400,height=600');
-                if (w) {
-                  w.document.write(html);
-                  w.document.close();
-                  w.focus();
-                  setTimeout(() => { try { w.print(); } catch(e) { console.warn(e); } }, 300);
-                }
-              }
-            } catch (err) {
-              console.warn('Auto-print fallback failed', err);
-            }
-          }
-        } catch (err) {
-          console.warn('Auto-print failed, falling back to manual print', err);
-        }
-      })();
+      salesApi.printReceipt(sale.id).catch(err => {
+        console.warn('Receipt print failed', err);
+      });
 
       // Reset form
       setCart([]);
@@ -555,6 +615,7 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
       setDiscountCode('');
       setAppliedDiscount(null);
       setPointsToRedeem(0);
+      setPhoneNumber('');
 
       // Re-focus barcode input
       setTimeout(() => {
@@ -710,91 +771,6 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
             )}
           </div>
 
-          {/* Discount Code */}
-          {!appliedDiscount && (
-            <div className={`${themeClasses.card} border rounded-xl p-4`}>
-              <div className="flex items-center gap-2 mb-2">
-                <Tag size={18} className={themeClasses.textSecondary} />
-                <span className={`${themeClasses.text} font-semibold text-sm`}>Discount Code</span>
-              </div>
-              <div className="flex gap-2">
-                <input
-                  placeholder="Enter code..."
-                  value={discountCode}
-                  onChange={(e) => setDiscountCode(e.target.value)}
-                  className={`flex-1 ${themeClasses.input} border rounded-lg px-3 py-2 ${themeClasses.text} outline-none text-sm`}
-                />
-                <button
-                  disabled={!discountCode || cart.length === 0}
-                  onClick={applyDiscountCode}
-                  className="px-3 py-2 bg-blue-500 text-white rounded-lg font-semibold text-sm hover:bg-blue-600 transition-colors disabled:opacity-50"
-                >
-                  Apply
-                </button>
-              </div>
-            </div>
-          )}
-          {appliedDiscount && (
-            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center justify-between">
-              <span className="text-green-400 font-semibold text-sm">✓ {appliedDiscount.code}</span>
-              <button onClick={removeDiscount} className="text-red-400 hover:text-red-300">
-                <X size={16} />
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* RIGHT: CART & PAYMENT (2 cols on desktop) */}
-        <div className="lg:col-span-2 flex flex-col gap-4">
-          {/* TOTAL DISPLAY - PROMINENT FOR CUSTOMER */}
-          <div className={`${themeClasses.card} border rounded-xl p-5 shadow-xl order-first lg:order-none`}>
-            <p className={`${themeClasses.textSecondary} text-xs font-semibold mb-1`}>TOTAL</p>
-            <div className="text-emerald-500 dark:text-emerald-400 text-6xl font-black mb-3">
-              <CurrencyDisplay amount={total} />
-            </div>
-            
-            {cart.length > 0 && (
-              <div className={`space-y-1 text-sm ${themeClasses.textSecondary}`}>
-                <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                  <CurrencyDisplay amount={subtotal} />
-                </div>
-                {discountAmount > 0 && (
-                  <div className="flex justify-between text-green-500">
-                    <span>-Discount:</span>
-                    <CurrencyDisplay amount={discountAmount} />
-                  </div>
-                )}
-                {pointsDiscount > 0 && (
-                  <div className="flex justify-between">
-                    <span>-Points:</span>
-                    <CurrencyDisplay amount={pointsDiscount} />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {totalPaid > 0 && (
-              <div className={`mt-3 pt-3 border-t border-gray-700/30 text-sm font-bold ${themeClasses.text}`}>
-                <div className="flex justify-between">
-                  <span>Paid:</span>
-                  <CurrencyDisplay amount={totalPaid} />
-                </div>
-                {change > 0 && (
-                  <div className="flex justify-between text-green-500">
-                    <span>Change:</span>
-                    <CurrencyDisplay amount={change} />
-                  </div>
-                )}
-                {totalPaid < total && (
-                  <div className="text-red-500 mt-2">
-                    Need: <CurrencyDisplay amount={total - totalPaid} />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
           {/* Cart Items */}
           <div className={`${themeClasses.card} border rounded-xl p-4 flex-1 flex flex-col`}>
             <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-700">
@@ -849,6 +825,91 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
               )}
             </div>
           </div>
+        </div>
+
+        {/* RIGHT: CART & PAYMENT (2 cols on desktop) */}
+        <div className="lg:col-span-2 flex flex-col gap-4">
+          {/* TOTAL DISPLAY - PROMINENT FOR CUSTOMER */}
+          <div className={`${themeClasses.card} border rounded-xl p-5 shadow-xl order-first lg:order-none`}>
+            <p className={`${themeClasses.textSecondary} text-xs font-semibold mb-1`}>TOTAL</p>
+            <div className="text-emerald-500 dark:text-emerald-400 text-6xl font-black mb-3">
+              <CurrencyDisplay amount={total} />
+            </div>
+            
+            {cart.length > 0 && (
+              <div className={`space-y-1 text-sm ${themeClasses.textSecondary}`}>
+                <div className="flex justify-between">
+                  <span>Subtotal:</span>
+                  <CurrencyDisplay amount={subtotal} />
+                </div>
+                {discountAmount > 0 && (
+                  <div className="flex justify-between text-green-500">
+                    <span>-Discount:</span>
+                    <CurrencyDisplay amount={discountAmount} />
+                  </div>
+                )}
+                {pointsDiscount > 0 && (
+                  <div className="flex justify-between">
+                    <span>-Points:</span>
+                    <CurrencyDisplay amount={pointsDiscount} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {totalPaid > 0 && (
+              <div className={`mt-3 pt-3 border-t border-gray-700/30 text-sm font-bold ${themeClasses.text}`}>
+                <div className="flex justify-between">
+                  <span>Paid:</span>
+                  <CurrencyDisplay amount={totalPaid} />
+                </div>
+                {change > 0 && (
+                  <div className="flex justify-between text-green-500">
+                    <span>Change:</span>
+                    <CurrencyDisplay amount={change} />
+                  </div>
+                )}
+                {totalPaid < total && (
+                  <div className="text-red-500 mt-2">
+                    Need: <CurrencyDisplay amount={total - totalPaid} />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Discount Code */}
+          {!appliedDiscount && (
+            <div className={`${themeClasses.card} border rounded-xl p-4`}>
+              <div className="flex items-center gap-2 mb-2">
+                <Tag size={18} className={themeClasses.textSecondary} />
+                <span className={`${themeClasses.text} font-semibold text-sm`}>Discount Code</span>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  placeholder="Enter code..."
+                  value={discountCode}
+                  onChange={(e) => setDiscountCode(e.target.value)}
+                  className={`flex-1 ${themeClasses.input} border rounded-lg px-3 py-2 ${themeClasses.text} outline-none text-sm`}
+                />
+                <button
+                  disabled={!discountCode || cart.length === 0}
+                  onClick={applyDiscountCode}
+                  className="px-3 py-2 bg-blue-500 text-white rounded-lg font-semibold text-sm hover:bg-blue-600 transition-colors disabled:opacity-50"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          )}
+          {appliedDiscount && (
+            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center justify-between">
+              <span className="text-green-400 font-semibold text-sm">✓ {appliedDiscount.code}</span>
+              <button onClick={removeDiscount} className="text-red-400 hover:text-red-300">
+                <X size={16} />
+              </button>
+            </div>
+          )}
 
           {/* Payment */}
           <div className={`${themeClasses.card} border rounded-xl p-4 space-y-2`}>
@@ -927,21 +988,55 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
 
           {/* Customer & Complete */}
           <div className="space-y-2">
-            <select
-              value={selectedCustomer?.id || ''}
-              onChange={(e) => {
-                const customer = customers.find(c => c.id === parseInt(e.target.value));
-                setSelectedCustomer(customer || null);
-              }}
-              className={`w-full ${themeClasses.input} border rounded-lg px-3 py-2 ${themeClasses.text} outline-none text-sm`}
-            >
-              <option value="">Walk-in Customer</option>
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}
-                </option>
-              ))}
-            </select>
+            <div className="space-y-2">
+              <label className={`${themeClasses.text} font-bold text-xs block`}>CUSTOMER (by phone)</label>
+              <div className="flex gap-2">
+                <input
+                  type="tel"
+                  placeholder="755000049 (9 digits)"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      searchCustomerByPhone(phoneNumber);
+                    }
+                  }}
+                  disabled={searchingCustomer}
+                  className={`flex-1 ${themeClasses.input} border rounded-lg px-3 py-2 ${themeClasses.text} outline-none text-sm disabled:opacity-50`}
+                />
+                <button
+                  onClick={() => searchCustomerByPhone(phoneNumber)}
+                  disabled={!phoneNumber.trim() || searchingCustomer}
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-semibold text-sm transition-colors"
+                >
+                  {searchingCustomer ? 'Searching...' : 'Search'}
+                </button>
+              </div>
+
+              {selectedCustomer && (
+                <div className={`p-3 rounded-lg border ${isDark ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-emerald-50 border-emerald-200'}`}>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div>
+                      <p className="text-emerald-500 font-bold text-sm">{selectedCustomer.name}</p>
+                      <p className={`${themeClasses.textSecondary} text-xs`}>{selectedCustomer.phone}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedCustomer(null);
+                        setPhoneNumber('');
+                      }}
+                      className="text-red-500 hover:text-red-600"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Star size={14} className="text-yellow-500" />
+                    <span className="text-yellow-500 font-bold text-sm">{selectedCustomer.total_points} Points</span>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <button
               onClick={processSale}
@@ -1072,33 +1167,6 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
         </div>
       )}
 
-      {/* Receipt Modal */}
-      {showReceipt && lastSale && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 p-4">
-          <div className={`${themeClasses.card} border rounded-xl p-6 max-w-md w-full`}>
-            <h3 className={`text-lg font-bold ${themeClasses.text} mb-4`}>Receipt</h3>
-            <div className="space-y-1 text-sm mb-4">
-              <div className="flex justify-between">
-                <span>Subtotal:</span>
-                <CurrencyDisplay amount={lastSale.subtotal} />
-              </div>
-              {lastSale.discountAmount > 0 && (
-                <div className="flex justify-between">
-                  <span>Discount:</span>
-                  <CurrencyDisplay amount={-lastSale.discountAmount} />
-                </div>
-              )}
-              <div className="flex justify-between font-bold">
-                <span>Total:</span>
-                <CurrencyDisplay amount={lastSale.total_amount} />
-              </div>
-            </div>
-            <button onClick={() => setShowReceipt(false)} className="w-full py-2 bg-gray-600 text-white rounded-lg font-semibold text-sm">
-              Close
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

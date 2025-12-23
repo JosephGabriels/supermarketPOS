@@ -51,6 +51,81 @@ interface DiscountCode {
   valid: boolean;
 }
 
+interface LastSale {
+  id: number;
+  sale_number?: string;
+  subtotal: string;
+  tax_amount?: string;
+  total_amount: string;
+  items?: Array<{
+    product_barcode?: string;
+    product?: number;
+    product_name?: string;
+    quantity: number;
+    unit_price: string;
+    subtotal: string;
+  }>;
+  etims_qr_image?: string;
+  rcpt_signature?: string;
+  cashier_name?: string;
+  payments: Payment[];
+  change: number;
+  discountAmount: number;
+  pointsDiscount: number;
+  tax: number;
+  saleDate: string;
+  posNumber: number;
+  cashierName: string;
+}
+
+const numberToWords = (num: number): string => {
+  const ones = ['', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
+  const teens = ['TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN'];
+  const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
+  const scales = ['', 'THOUSAND', 'MILLION', 'BILLION'];
+
+  if (num === 0) return 'ZERO';
+
+  const parts: string[] = [];
+  let scaleIndex = 0;
+
+  while (num > 0) {
+    const chunk = num % 1000;
+    if (chunk > 0) {
+      let chunkWords = '';
+      const hundreds = Math.floor(chunk / 100);
+      const remainder = chunk % 100;
+      const tensPlace = Math.floor(remainder / 10);
+      const onesPlace = remainder % 10;
+
+      if (hundreds > 0) {
+        chunkWords += ones[hundreds] + ' HUNDRED ';
+      }
+
+      if (remainder >= 20) {
+        chunkWords += tens[tensPlace];
+        if (onesPlace > 0) {
+          chunkWords += ' ' + ones[onesPlace];
+        }
+      } else if (remainder >= 10) {
+        chunkWords += teens[remainder - 10];
+      } else if (onesPlace > 0) {
+        chunkWords += ones[onesPlace];
+      }
+
+      if (scaleIndex > 0) {
+        chunkWords += ' ' + scales[scaleIndex];
+      }
+
+      parts.unshift(chunkWords.trim());
+    }
+    num = Math.floor(num / 1000);
+    scaleIndex++;
+  }
+
+  return parts.join(' ').trim();
+};
+
 export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
   const { user } = useAuth();
   const [products, setProducts] = useState<any[]>([]);
@@ -68,7 +143,7 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
   const [showReceipt, setShowReceipt] = useState(false);
-  const [lastSale, setLastSale] = useState<any>(null);
+  const [lastSale, setLastSale] = useState<LastSale | null>(null);
   const [currentShift, setCurrentShift] = useState<any>(null);
   const [shiftLoading, setShiftLoading] = useState(true);
   const [showShiftModal, setShowShiftModal] = useState(false);
@@ -457,14 +532,19 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
         console.error('Failed to refresh shift data:', err);
       }
 
-      // Set last sale for receipt
+      const saleDate = new Date(sale.created_at);
+      const posNumber = currentShift?.id || 1;
+      
       setLastSale({
         ...sale,
         payments,
         change,
         discountAmount,
         pointsDiscount,
-        tax
+        tax,
+        saleDate: saleDate.toLocaleString(),
+        posNumber,
+        cashierName: user?.first_name || user?.username || 'Unknown'
       });
 
       // Show receipt
@@ -1062,40 +1142,173 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
         </div>
       )}
 
-      {/* Receipt Modal (simplified) */}
+      {/* Receipt Modal */}
       {showReceipt && lastSale && (
-        <div className="fixed inset-0 flex items-center justify-center z-50">
-          <div className={`${themeClasses.card} border rounded-2xl p-6 max-w-md w-full mx-4`}>
-            <h3 className={`text-lg font-bold ${themeClasses.text} mb-4`}>Receipt</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span>Subtotal:</span>
-                <span>KES {lastSale.subtotal}</span>
-              </div>
-              {lastSale.discountAmount > 0 && (
-                <div className="flex justify-between">
-                  <span>Discount:</span>
-                  <span>-KES {lastSale.discountAmount}</span>
-                </div>
-              )}
-              {lastSale.pointsDiscount > 0 && (
-                <div className="flex justify-between">
-                  <span>Points Discount:</span>
-                  <span>-KES {lastSale.pointsDiscount}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span>Tax (16%):</span>
-                <span>KES {lastSale.tax.toLocaleString()}</span>
-              </div>
-              <hr />
-              <div className="flex justify-between font-bold">
-                <span>Total:</span>
-                <span>KES {lastSale.total_amount}</span>
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 no-print">
+          <div className={`${themeClasses.card} border rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto`}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className={`text-lg font-bold ${themeClasses.text}`}>Receipt</h3>
+              <div className="flex gap-2">
+                <button
+                  onClick={printReceipt}
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded font-medium transition-colors"
+                >
+                  Print
+                </button>
+                <button
+                  onClick={() => setShowReceipt(false)}
+                  className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded font-medium transition-colors"
+                >
+                  Close
+                </button>
               </div>
             </div>
-            <div className="mt-4 text-right">
-              <button onClick={() => setShowReceipt(false)} className="px-4 py-2 bg-gray-500 text-white rounded">Close</button>
+
+            {/* Receipt Content for Printing */}
+            <div id="receipt-content" className="receipt-content bg-white text-black p-8 rounded text-sm font-mono" style={{ width: '80mm' }}>
+              {/* Store Header */}
+              <div className="text-center border-b border-gray-800 pb-3 mb-3">
+                <p className="font-bold text-lg">EL-MART</p>
+                <p className="text-xs">Nairobi CBD</p>
+                <p className="text-xs">+254726582960</p>
+                <p className="text-xs">info@elmart.com</p>
+                <p className="text-xs italic">Where quality meets affordability</p>
+              </div>
+
+              {/* POS Info */}
+              <div className="text-xs border-b border-gray-800 pb-2 mb-3 space-y-1">
+                <div className="flex justify-between">
+                  <span>POS: 94</span>
+                  <span>{lastSale.saleDate}</span>
+                </div>
+                <div>Receipt #: {lastSale.sale_number || `SALE-${lastSale.id}`}</div>
+                <div>Tax ID: A00030554B</div>
+              </div>
+
+              {/* Items Table */}
+              <div className="border-b border-gray-800 pb-3 mb-3">
+                <div className="flex justify-between text-xs font-bold border-b border-gray-400 pb-2 mb-2">
+                  <span>CODE</span>
+                  <span>DESCRIPTION</span>
+                  <span>QTY</span>
+                  <span>PRICE</span>
+                  <span>EXT</span>
+                </div>
+                <div className="space-y-1 text-xs">
+                  {lastSale.items && lastSale.items.length > 0 ? (
+                    lastSale.items.map((item, idx: number) => (
+                      <div key={idx}>
+                        <div className="flex justify-between">
+                          <span className="w-12">{item.product_barcode ?? item.product ?? idx}</span>
+                          <span className="flex-1 ml-2">{item.product_name ?? 'Product'}</span>
+                          <span className="w-8 text-right">{item.quantity}</span>
+                          <span className="w-16 text-right">{parseFloat(item.unit_price ?? '0').toFixed(2)}</span>
+                          <span className="w-16 text-right">{parseFloat(item.subtotal ?? '0').toFixed(2)}</span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-xs">No items</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Totals */}
+              <div className="border-b border-gray-800 pb-3 mb-3 space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span>Subtotal</span>
+                  <span>{parseFloat(lastSale.subtotal ?? '0').toLocaleString()}</span>
+                </div>
+                {lastSale.discountAmount > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span>Discount</span>
+                    <span>-{lastSale.discountAmount.toLocaleString()}</span>
+                  </div>
+                )}
+                {lastSale.pointsDiscount > 0 && (
+                  <div className="flex justify-between text-blue-600">
+                    <span>Points Discount</span>
+                    <span>-{lastSale.pointsDiscount.toLocaleString()}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-sm border-t border-gray-400 pt-1 mt-1">
+                  <span>TOTAL</span>
+                  <span>{parseFloat(lastSale.total_amount ?? '0').toLocaleString()}</span>
+                </div>
+              </div>
+
+              {/* Payment Info */}
+              <div className="border-b border-gray-800 pb-3 mb-3 space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span>Tendered</span>
+                  <span>{(parseFloat(lastSale.total_amount ?? '0') + lastSale.change).toLocaleString()}</span>
+                </div>
+                {lastSale.change > 0 && (
+                  <div className="flex justify-between font-bold">
+                    <span>Change</span>
+                    <span>{lastSale.change.toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Amount in Words */}
+              <div className="border-b border-gray-800 pb-3 mb-3 text-xs">
+                <p className="text-center font-bold">
+                  {numberToWords(Math.floor(parseFloat(lastSale.total_amount ?? '0')))} SHILLING ONLY
+                </p>
+              </div>
+
+              {/* Tax Details */}
+              {lastSale.tax_amount && (
+                <div className="border-b border-gray-800 pb-3 mb-3">
+                  <p className="text-xs font-bold mb-2">TAX DETAILS</p>
+                  <div className="text-xs space-y-1">
+                    <div className="flex justify-between">
+                      <span>CODE</span>
+                      <span>VATABLE</span>
+                      <span>VAT AMT</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>V</span>
+                      <span>{(parseFloat(lastSale.total_amount ?? '0') - parseFloat(lastSale.tax_amount ?? '0')).toFixed(2)}</span>
+                      <span>{parseFloat(lastSale.tax_amount ?? '0').toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* KRA eTIMS */}
+              <div className="border-b border-gray-800 pb-3 mb-3 text-xs text-center">
+                <p className="font-bold">KRA eTIMS</p>
+                {lastSale.rcpt_signature && (
+                  <p className="text-xs truncate">Sig: {lastSale.rcpt_signature}</p>
+                )}
+              </div>
+
+              {/* Served By */}
+              <div className="border-b border-gray-800 pb-3 mb-3 text-xs">
+                <p>Served by: {lastSale.cashierName}</p>
+              </div>
+
+              {/* QR Code */}
+              {lastSale.etims_qr_image && (
+                <div className="text-center border-b border-gray-800 pb-3 mb-3">
+                  <img
+                    src={lastSale.etims_qr_image}
+                    alt="QR Code"
+                    className="w-24 h-24 mx-auto"
+                  />
+                </div>
+              )}
+
+              {/* Footer */}
+              <div className="text-center space-y-1 text-xs">
+                <p className="font-bold">www.elmart.com</p>
+                <p>Thank you for your purchase!</p>
+                {lastSale.sale_number && (
+                  <p className="text-xs">CU Serial: {lastSale.sale_number}</p>
+                )}
+              </div>
             </div>
           </div>
         </div>

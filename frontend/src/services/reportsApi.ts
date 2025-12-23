@@ -97,6 +97,7 @@ export interface CashFlowStats {
     method: string;
     reference: string;
     processed_by: string;
+    sale_id?: number;
   }>;
 }
 
