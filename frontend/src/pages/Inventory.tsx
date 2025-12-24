@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Package,
   AlertTriangle,
@@ -23,6 +23,7 @@ import { LazyWrapper } from '../components/ui/LazyWrapper';
 import { CurrencyDisplay } from '../components/ui/CurrencyDisplay';
 import type { TableColumn } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
 import { productsApi } from '../services/productsApi';
 import { suppliersApi } from '../services/suppliersApi';
 import { stockMovementsApi } from '../services/productsApi';
@@ -41,15 +42,16 @@ export const Inventory: React.FC<{ isDark: boolean; themeClasses: Record<string,
 
   // Real data states
   const [products, setProducts] = useState<Product[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]); // Store all products for accurate stats
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
   const inventoryStats = {
-    totalItems: products.length,
-    lowStock: products.filter(item => item.is_low_stock).length,
-    outOfStock: products.filter(item => item.stock_quantity === 0).length,
-    totalValue: products.reduce((sum, item) => sum + (parseFloat(item.price) * item.stock_quantity), 0),
-    reorderNeeded: products.filter(item => item.is_low_stock).length
+    totalItems: allProducts.length,
+    lowStock: allProducts.filter(item => item.is_low_stock).length,
+    outOfStock: allProducts.filter(item => item.stock_quantity === 0).length,
+    totalValue: allProducts.reduce((sum, item) => sum + (parseFloat(item.price) * item.stock_quantity), 0),
+    reorderNeeded: allProducts.filter(item => item.is_low_stock).length
   };
 
   const tabs = [
@@ -60,18 +62,33 @@ export const Inventory: React.FC<{ isDark: boolean; themeClasses: Record<string,
     { id: 'reports', label: 'Reports', icon: FileText }
   ];
 
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+
   // Fetch data on mount
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const [productsRes, movementsRes, suppliersRes] = await Promise.all([
-          productsApi.getProducts(),
+        // Load all products for stats and search
+        const allProductsRes = await productsApi.getProducts();
+        if (Array.isArray(allProductsRes)) {
+          setAllProducts(allProductsRes);
+          setProducts(allProductsRes); // Show all products for display
+        } else if (allProductsRes && allProductsRes.data && Array.isArray(allProductsRes.data)) {
+          setAllProducts(allProductsRes.data);
+          setProducts(allProductsRes.data); // Show all products for display
+        } else {
+          setAllProducts([]);
+          setProducts([]);
+        }
+
+        const [movementsRes, suppliersRes] = await Promise.all([
           stockMovementsApi.getStockMovements(),
           suppliersApi.getSuppliers()
         ]);
-        setProducts(productsRes || []);
+        
         setStockMovements(movementsRes || []);
         setSuppliers(suppliersRes || []);
       } catch (err) {
@@ -85,6 +102,54 @@ export const Inventory: React.FC<{ isDark: boolean; themeClasses: Record<string,
     fetchData();
   }, []);
 
+  const handleProductResponse = (response: any) => {
+    if (response && response.pagination) {
+      // Paginated response - used for search results or when paginating
+      setProducts(response.data);
+      // For paginated responses, we don't update allProducts as we only have partial data
+    } else if (Array.isArray(response)) {
+      // Full dataset response - used for initial load
+      setProducts(response); // Show all products for display
+      setAllProducts(response); // Store all products for stats and search
+    } else {
+      setProducts([]);
+      setAllProducts([]);
+    }
+  };
+
+  const performSearch = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setIsSearching(false);
+      // Reset to show all products
+      setProducts(allProducts);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      // Client-side search through all products for better performance
+      const filteredProducts = allProducts.filter(product =>
+        product.name.toLowerCase().includes(query.toLowerCase()) ||
+        product.barcode.toLowerCase().includes(query.toLowerCase()) ||
+        (product.description && product.description.toLowerCase().includes(query.toLowerCase()))
+      );
+      
+      setProducts(filteredProducts); // Show all matching results
+    } catch (err) {
+      setError('Search failed');
+      console.error('Search error:', err);
+    } finally {
+      setIsSearching(false);
+    }
+  }, [allProducts]);
+
+  const debouncedSearch = useDebouncedCallback(performSearch, 500);
+
+  const handleSearch = (query: string) => {
+    setSearchTerm(query);
+    debouncedSearch(query);
+  };
+
   const getStockStatus = (item: Product) => {
     if (item.stock_quantity === 0) return { label: 'Out of Stock', color: 'text-red-500 bg-red-500/10', icon: AlertTriangle };
     if (item.is_low_stock) return { label: 'Low Stock', color: 'text-amber-500 bg-amber-500/10', icon: TrendingDown };
@@ -95,9 +160,14 @@ export const Inventory: React.FC<{ isDark: boolean; themeClasses: Record<string,
     setIsLoading(true);
     try {
       await productsApi.adjustStock(itemId, { quantity, reason, movement_type: 'adjustment' });
-      // Refresh products data
-      const productsRes = await productsApi.getProducts();
-      setProducts(productsRes || []);
+      // Refresh all products data to keep stats accurate
+      const productsRes = await productsApi.getProducts({ limit: 10000 });
+      if (Array.isArray(productsRes)) {
+        setAllProducts(productsRes);
+        setProducts(productsRes); // Update display with all products
+      } else {
+        handleProductResponse(productsRes);
+      }
       // Refresh movements
       const movementsRes = await stockMovementsApi.getStockMovements();
       setStockMovements(movementsRes || []);
@@ -375,12 +445,14 @@ export const Inventory: React.FC<{ isDark: boolean; themeClasses: Record<string,
         <DataTable
           data={products}
           columns={itemColumns}
-          isLoading={isLoading}
+          isLoading={isLoading || isSearching}
           actions={actionButtons}
+          onSearch={handleSearch}
           themeClasses={themeClasses}
           isDark={isDark}
           emptyMessage="No inventory items found"
-          pageSize={20}
+          pageSize={100}
+          serverSide={false}
         />
       )}
 

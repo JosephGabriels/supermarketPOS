@@ -26,6 +26,11 @@ interface DataTableProps {
     variant?: 'primary' | 'danger' | 'secondary';
   }[];
   onRowClick?: (item: any) => void;
+  onSearch?: (searchTerm: string) => void;
+  serverSide?: boolean;
+  totalItems?: number;
+  currentPage?: number;
+  onPageChange?: (page: number) => void;
   themeClasses: Record<string, string>;
   emptyMessage?: string;
   isDark: boolean;
@@ -41,6 +46,11 @@ export const DataTable: React.FC<DataTableProps> = ({
   pageSize = 10,
   actions = [],
   onRowClick,
+  onSearch,
+  serverSide = false,
+  totalItems = 0,
+  currentPage: propCurrentPage,
+  onPageChange,
   themeClasses,
   emptyMessage = "No data available",
   isDark
@@ -48,7 +58,8 @@ export const DataTable: React.FC<DataTableProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [internalPage, setInternalPage] = useState(1);
+  const currentPage = propCurrentPage !== undefined ? propCurrentPage : internalPage;
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [filters, setFilters] = useState<Record<string, string>>({});
 
@@ -56,8 +67,9 @@ export const DataTable: React.FC<DataTableProps> = ({
   const filteredData = useMemo(() => {
     let filtered = data;
 
-    // Apply search filter
-    if (searchTerm) {
+    // Apply client-side search filter only if onSearch is not provided
+    // (onSearch means server-side search is handled by parent component)
+    if (searchTerm && !onSearch) {
       filtered = filtered.filter(item =>
         Object.values(item).some(value =>
           String(value).toLowerCase().includes(searchTerm.toLowerCase())
@@ -75,7 +87,7 @@ export const DataTable: React.FC<DataTableProps> = ({
     });
 
     return filtered;
-  }, [data, searchTerm, filters]);
+  }, [data, searchTerm, filters, onSearch]);
 
   // Sort data
   const sortedData = useMemo(() => {
@@ -93,13 +105,24 @@ export const DataTable: React.FC<DataTableProps> = ({
 
   // Paginate data
   const paginatedData = useMemo(() => {
+    if (serverSide) return sortedData; // Server already paginated
     if (!pagination) return sortedData;
     
     const startIndex = (currentPage - 1) * pageSize;
     return sortedData.slice(startIndex, startIndex + pageSize);
-  }, [sortedData, currentPage, pageSize, pagination]);
+  }, [sortedData, currentPage, pageSize, pagination, serverSide]);
 
-  const totalPages = Math.ceil(sortedData.length / pageSize);
+  const totalPages = serverSide 
+    ? Math.ceil(totalItems / pageSize)
+    : Math.ceil(sortedData.length / pageSize);
+
+  const handlePageChange = (page: number) => {
+    if (onPageChange) {
+      onPageChange(page);
+    } else {
+      setInternalPage(page);
+    }
+  };
 
   const handleSort = (columnKey: string) => {
     if (sortColumn === columnKey) {
@@ -130,7 +153,7 @@ export const DataTable: React.FC<DataTableProps> = ({
 
   const handleFilterChange = (column: string, value: string) => {
     setFilters(prev => ({ ...prev, [column]: value }));
-    setCurrentPage(1);
+    if (!serverSide) setInternalPage(1);
   };
 
   const LoadingSkeleton = () => (
@@ -168,7 +191,10 @@ export const DataTable: React.FC<DataTableProps> = ({
                   value={searchTerm}
                   onChange={(e) => {
                     setSearchTerm(e.target.value);
-                    setCurrentPage(1);
+                    if (!serverSide) setInternalPage(1);
+                    if (onSearch) {
+                      onSearch(e.target.value);
+                    }
                   }}
                   className={`bg-transparent ${themeClasses.text} outline-none flex-1`}
                 />
@@ -303,22 +329,35 @@ export const DataTable: React.FC<DataTableProps> = ({
         <div className="p-6 border-t border-gray-700/50">
           <div className="flex items-center justify-between">
             <div className={`${themeClasses.textSecondary} text-sm`}>
-              Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, sortedData.length)} of {sortedData.length} results
+              {serverSide 
+                ? `Showing ${((currentPage - 1) * pageSize) + 1} to ${Math.min(currentPage * pageSize, totalItems)} of ${totalItems} results`
+                : `Showing ${((currentPage - 1) * pageSize) + 1} to ${Math.min(currentPage * pageSize, sortedData.length)} of ${sortedData.length} results`
+              }
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
                 className={`px-3 py-2 rounded-lg ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : themeClasses.hover}`}
               >
                 Previous
               </button>
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                const page = i + 1;
+                // Logic to show pages around current page, not just 1-5
+                let page = i + 1;
+                if (totalPages > 5) {
+                   if (currentPage > 3) {
+                      page = currentPage - 2 + i;
+                   }
+                   if (page > totalPages) {
+                      page = totalPages - 4 + i;
+                   }
+                }
+                
                 return (
                   <button
                     key={page}
-                    onClick={() => setCurrentPage(page)}
+                    onClick={() => handlePageChange(page)}
                     className={`px-3 py-2 rounded-lg ${
                       currentPage === page
                         ? 'bg-gradient-to-r from-violet-500 to-pink-500 text-white'
@@ -330,7 +369,7 @@ export const DataTable: React.FC<DataTableProps> = ({
                 );
               })}
               <button
-                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}
                 className={`px-3 py-2 rounded-lg ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : themeClasses.hover}`}
               >

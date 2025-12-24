@@ -96,9 +96,14 @@ export const productsApi = {
     branch?: number;
     page?: number;
     limit?: number;
-  }): Promise<Product[]> => {
+  }): Promise<any> => {
     const response = await httpClient.get<any>(ENDPOINTS.PRODUCTS, params);
     
+    // Return full paginated response if available
+    if (response && response.data && Array.isArray(response.data) && response.pagination) {
+      return response;
+    }
+
     if (response && response.data && Array.isArray(response.data)) {
       return response.data;
     }
@@ -152,9 +157,14 @@ export const productsApi = {
     return httpClient.post(ENDPOINTS.STOCK_ADJUST(id), data);
   },
 
-  searchProducts: async (query: string): Promise<Product[]> => {
+  searchProducts: async (query: string): Promise<any> => {
     const response = await httpClient.get<any>(ENDPOINTS.PRODUCTS, { search: query });
     
+    // Return full paginated response if available
+    if (response && response.data && Array.isArray(response.data) && response.pagination) {
+      return response;
+    }
+
     if (response && response.data && Array.isArray(response.data)) {
       return response.data;
     }

@@ -15,9 +15,11 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import HttpResponse, Http404
+import os
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -35,3 +37,34 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+
+def serve_frontend(request, path=None):
+    index_path = os.path.join(settings.BASE_DIR, '..', 'frontend', 'dist', 'index.html')
+    with open(index_path, 'r') as f:
+        return HttpResponse(f.read(), content_type='text/html')
+
+def serve_asset(request, path):
+    asset_path = os.path.join(settings.BASE_DIR, '..', 'frontend', 'dist', 'assets', path)
+    if os.path.exists(asset_path):
+        with open(asset_path, 'rb') as f:
+            # Determine content type based on extension
+            if path.endswith('.js'):
+                content_type = 'application/javascript'
+            elif path.endswith('.css'):
+                content_type = 'text/css'
+            elif path.endswith('.png'):
+                content_type = 'image/png'
+            elif path.endswith('.jpg') or path.endswith('.jpeg'):
+                content_type = 'image/jpeg'
+            elif path.endswith('.svg'):
+                content_type = 'image/svg+xml'
+            else:
+                content_type = 'application/octet-stream'
+            return HttpResponse(f.read(), content_type=content_type)
+    else:
+        raise Http404
+
+urlpatterns += [
+    path('assets/<path:path>', serve_asset),
+    re_path(r'^(?!api/|static/|media/|assets/).*$', serve_frontend),
+]

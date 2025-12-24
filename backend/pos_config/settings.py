@@ -157,7 +157,7 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 50,
+    'PAGE_SIZE': 100,
     'DATETIME_FORMAT': '%Y-%m-%d %H:%M:%S',
 }
 
@@ -173,14 +173,14 @@ SIMPLE_JWT = {
 # CORS Configuration
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174',
+    default='http://localhost:8000,http://127.0.0.1:8000,http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174',
     cast=Csv()
 )
 CORS_ALLOW_CREDENTIALS = True
 
 # Security Settings for HTTPS
+SECURE_SSL_REDIRECT = False  # Disabled for HTTP production
 if not DEBUG:
-    SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True

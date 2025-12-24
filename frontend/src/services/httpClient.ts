@@ -170,7 +170,7 @@ class HttpClient {
       return {
         data: data.results,
         pagination: {
-          page: 1,
+          page: 1, // Will be updated in get() method if params are present
           limit: data.results?.length || 0,
           total: data.count,
           totalPages: Math.ceil(data.count / (data.results?.length || 1)) || 1
@@ -215,16 +215,21 @@ class HttpClient {
 
   // HTTP Methods
   async get<T = any>(endpoint: string, params?: Record<string, any>): Promise<T> {
-    const url = new URL(endpoint, this.baseURL);
+    let fullEndpoint = endpoint;
     if (params) {
+      const urlParams = new URLSearchParams();
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
-          url.searchParams.append(key, String(value));
+          urlParams.append(key, String(value));
         }
       });
+      const queryString = urlParams.toString();
+      if (queryString) {
+        fullEndpoint += (endpoint.includes('?') ? '&' : '?') + queryString;
+      }
     }
 
-    const result = await this.request<T>(url.pathname + url.search, {
+    const result = await this.request<T>(fullEndpoint, {
       method: 'GET',
     });
 

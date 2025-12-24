@@ -129,7 +129,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       barcode: generateBarcode(),
       category_id: null,
       supplier_id: null,
-      branch_id: user?.branch?.id || null,
+      branch_id: user?.branch || null,
       description: '',
       price: '',
       cost_price: '',

@@ -128,6 +128,7 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<number | null>(null);
   const [products, setProducts] = useState<any[]>([]);
+  const [searchedProducts, setSearchedProducts] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
     const [currentSaleId, setCurrentSaleId] = useState<number | null>(null);
@@ -161,7 +162,7 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
           branchId = selectedBranch;
         }
         const [productsRes, customersRes, branchesRes] = await Promise.all([
-          productsApi.getProducts(branchId ? { branch: branchId } : undefined),
+          productsApi.getProducts(branchId ? { branch: branchId, limit: 1000 } : { limit: 1000 }),
           customersApi.getCustomers(),
           user?.role === 'admin' ? branchesApi.getActiveBranches() : Promise.resolve([])
         ]);
@@ -194,6 +195,42 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
     };
     loadData();
   }, [user, selectedBranch]);
+
+  // Handle product search
+  useEffect(() => {
+    const searchProducts = async () => {
+      if (searchQuery.trim().length > 2) {
+        try {
+          let branchId = user?.branch || undefined;
+          if (user?.role === 'admin' && selectedBranch) {
+            branchId = selectedBranch;
+          }
+          const searchRes = await productsApi.getProducts({
+            branch: branchId,
+            search: searchQuery,
+            limit: 100
+          });
+          const normalizeList = (res: any) => {
+            if (!res) return [];
+            if (Array.isArray(res)) return res;
+            if (res.results && Array.isArray(res.results)) return res.results;
+            if (res.data) {
+              if (Array.isArray(res.data)) return res.data;
+              if (res.data.results && Array.isArray(res.data.results)) return res.data.results;
+            }
+            return [];
+          };
+          setSearchedProducts(normalizeList(searchRes));
+        } catch (err) {
+          console.error('Error searching products:', err);
+          setSearchedProducts([]);
+        }
+      } else {
+        setSearchedProducts([]);
+      }
+    };
+    searchProducts();
+  }, [searchQuery, user, selectedBranch]);
 
   // Check for open shift
   useEffect(() => {
@@ -632,18 +669,14 @@ export const POS: React.FC<POSProps> = ({ isDark, themeClasses }) => {
     }
   };
 
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = searchQuery.trim() 
-      ? product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.barcode.includes(searchQuery)
-      : true;
-    
+  const filteredProducts = (searchedProducts.length > 0 ? searchedProducts : products).filter(product => {
+    // Additional filters if needed
     // Filter by branch if admin has selected one
     const matchesBranch = user?.role === 'admin' && selectedBranch
       ? product.branch === selectedBranch
       : true;
 
-    return matchesSearch && matchesBranch;
+    return matchesBranch;
   });
 
   if (loading || shiftLoading) {

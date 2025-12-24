@@ -69,6 +69,7 @@ export const dashboardApi = {
         totalOrdersChange: '0%',
         conversionRate: '0%',
         conversionRateChange: '0%',
+        totalCustomers: 0,
       };
     }
   },

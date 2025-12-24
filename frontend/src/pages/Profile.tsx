@@ -19,7 +19,7 @@ import { ChangePasswordModal } from '../components/modals/ChangePasswordModal';
 
 interface ProfileProps {
   isDark: boolean;
-  themeClasses: Record<string, string>;
+  themeClasses: any;
 }
 
 interface UserProfile {

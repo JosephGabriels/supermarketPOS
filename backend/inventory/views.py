@@ -25,8 +25,22 @@ class ProductViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), IsManager()]
         return [IsAuthenticated(), IsCashier()]
     
+    def list(self, request, *args, **kwargs):
+        # Check if pagination should be disabled
+        page = request.query_params.get('page', None)
+        limit = request.query_params.get('limit', None)
+        
+        if not page and not limit:
+            # Return all results without pagination
+            queryset = self.get_queryset()
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
+        
+        # Use default pagination
+        return super().list(request, *args, **kwargs)
+    
     def get_queryset(self):
-        queryset = Product.objects.filter(is_active=True)
+        queryset = Product.objects.filter(is_active=True).select_related('category', 'branch', 'supplier')
         user = self.request.user
         branch_id = None
         if user.role == 'admin':
@@ -103,10 +117,10 @@ class ProductViewSet(viewsets.ModelViewSet):
     def low_stock(self, request):
         queryset = Product.objects.filter(
             branch=request.user.branch,
-            is_active=True
-        )
-        low_stock_products = [p for p in queryset if p.is_low_stock]
-        serializer = ProductSerializer(low_stock_products, many=True)
+            is_active=True,
+            stock_quantity__lte=F('reorder_level')
+        ).select_related('category', 'branch', 'supplier')
+        serializer = ProductSerializer(queryset, many=True)
         return Response(serializer.data)
     
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsManager])

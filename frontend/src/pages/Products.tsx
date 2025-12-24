@@ -24,6 +24,9 @@ export const Products: React.FC<ProductsProps> = ({ isDark, themeClasses }) => {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [pageSize] = useState(50); // Adjust as needed
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -41,7 +44,7 @@ export const Products: React.FC<ProductsProps> = ({ isDark, themeClasses }) => {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const fetchData = async () => {
+  const fetchProducts = async (params?: any) => {
     try {
       setIsLoading(true);
       setError(null);
@@ -49,36 +52,72 @@ export const Products: React.FC<ProductsProps> = ({ isDark, themeClasses }) => {
       if (user?.role === 'admin' && formData.branch) {
         branchId = parseInt(formData.branch);
       }
-      const [productsRes, categoriesRes, suppliersRes, branchesRes] = await Promise.all([
-        productsApi.getProducts(branchId ? { branch: branchId } : undefined),
-        categoriesApi.getCategories(),
-        suppliersApi.getSuppliers(),
-        user?.role === 'admin' ? branchesApi.getActiveBranches() : Promise.resolve([])
-      ]);
-      setProducts(productsRes || []);
-      setCategories(categoriesRes || []);
-      setSuppliers(suppliersRes || []);
-      setBranches(branchesRes || []);
+      const productsRes = await productsApi.getProducts({
+        branch: branchId,
+        ...params
+      });
+      
+      if (productsRes && productsRes.data && Array.isArray(productsRes.data) && productsRes.pagination) {
+        // Paginated response
+        setProducts(productsRes.data);
+        setTotalCount(productsRes.pagination.total);
+      } else if (Array.isArray(productsRes)) {
+        // Non-paginated array
+        setProducts(productsRes);
+        setTotalCount(productsRes.length);
+      } else {
+        setProducts([]);
+        setTotalCount(0);
+      }
     } catch (err) {
-      console.error('Failed to fetch data:', err);
+      console.error('Failed to fetch products:', err);
       setError('Failed to load products');
+      setProducts([]);
+      setTotalCount(0);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const fetchData = async () => {
+    try {
+      const [categoriesRes, suppliersRes, branchesRes] = await Promise.all([
+        categoriesApi.getCategories(),
+        suppliersApi.getSuppliers(),
+        user?.role === 'admin' ? branchesApi.getActiveBranches() : Promise.resolve([])
+      ]);
+      setCategories(Array.isArray(categoriesRes) ? categoriesRes : []);
+      setSuppliers(Array.isArray(suppliersRes) ? suppliersRes : []);
+      setBranches(Array.isArray(branchesRes) ? branchesRes : []);
+    } catch (err) {
+      console.error('Failed to fetch data:', err);
+      setError('Failed to load data');
+    }
+  };
+
   useEffect(() => {
     fetchData();
+    fetchProducts({ page: currentPage, limit: pageSize });
 
     const onSale = () => {
       // Re-fetch products when a sale completes elsewhere
-      fetchData();
+      fetchProducts({ page: currentPage, limit: pageSize });
     };
     window.addEventListener('saleCompleted', onSale as EventListener);
     return () => {
       window.removeEventListener('saleCompleted', onSale as EventListener);
     };
-  }, []);
+  }, [currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1); // Reset to first page when search or category changes
+    fetchProducts({ 
+      page: 1, 
+      limit: pageSize, 
+      search: searchQuery || undefined,
+      category: selectedCategory ? parseInt(selectedCategory) : undefined
+    });
+  }, [searchQuery, selectedCategory]);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -199,18 +238,7 @@ export const Products: React.FC<ProductsProps> = ({ isDark, themeClasses }) => {
     setErrors({});
   };
 
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = searchQuery.trim() 
-      ? product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.barcode.toLowerCase().includes(searchQuery.toLowerCase())
-      : true;
-    
-    const matchesCategory = selectedCategory 
-      ? String(product.category) === selectedCategory 
-      : true;
-    
-    return matchesSearch && matchesCategory;
-  });
+  const displayProducts = products;
 
   const columns: TableColumn[] = [
     {
@@ -378,7 +406,7 @@ export const Products: React.FC<ProductsProps> = ({ isDark, themeClasses }) => {
           </div>
         </div>
         <DataTable
-          data={filteredProducts}
+          data={displayProducts}
           columns={columns}
           isLoading={isLoading}
           actions={canManageProducts ? actions : []}
@@ -389,6 +417,42 @@ export const Products: React.FC<ProductsProps> = ({ isDark, themeClasses }) => {
           searchable={false}
           filterable={false}
         />
+
+        {/* Pagination */}
+        {totalCount > pageSize && (
+          <div className="flex items-center justify-between mt-4">
+            <div className={`text-sm ${themeClasses.textSecondary}`}>
+              Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} products
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className={`px-3 py-1 rounded-md text-sm font-medium ${
+                  currentPage === 1
+                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                    : `${themeClasses.button} ${themeClasses.buttonHover}`
+                }`}
+              >
+                Previous
+              </button>
+              <span className={`text-sm ${themeClasses.textSecondary}`}>
+                Page {currentPage} of {Math.ceil(totalCount / pageSize)}
+              </span>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(Math.ceil(totalCount / pageSize), prev + 1))}
+                disabled={currentPage === Math.ceil(totalCount / pageSize)}
+                className={`px-3 py-1 rounded-md text-sm font-medium ${
+                  currentPage === Math.ceil(totalCount / pageSize)
+                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                    : `${themeClasses.button} ${themeClasses.buttonHover}`
+                }`}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {showModal && (
