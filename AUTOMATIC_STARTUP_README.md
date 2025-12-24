@@ -84,6 +84,23 @@ Get-Service "SupermarketPOS-Django", "SupermarketPOS-Nginx"
 
 **Note**: This method may not work reliably for services that require administrator privileges.
 
+## Firewall Configuration
+
+If you can't access the application from other computers on the network:
+
+1. **Run the firewall fix script as Administrator**:
+   ```batch
+   .\fix_firewall.bat
+   ```
+
+2. **Or manually add firewall rules**:
+   ```batch
+   netsh advfirewall firewall add rule name="Supermarket POS HTTP" dir=in action=allow protocol=TCP localport=8000
+   netsh advfirewall firewall add rule name="Supermarket POS API" dir=in action=allow protocol=TCP localport=8001
+   ```
+
+**Why this is needed**: Windows Firewall blocks incoming connections by default. Port 80 is often allowed for web servers, but port 8000 needs explicit permission.
+
 ## Monitoring and Troubleshooting
 
 ### Check Service Status
